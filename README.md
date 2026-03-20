@@ -1,1 +1,3 @@
 # firmware
+
+Initial firmware commit
