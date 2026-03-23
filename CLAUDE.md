@@ -1,6 +1,0 @@
-# BridgeBox Firmware
-
-## Skills
-
-## Правила
-
