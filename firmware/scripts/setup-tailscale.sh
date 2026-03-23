@@ -46,7 +46,7 @@ fi
 
 # Проверка интернета
 echo "Проверка интернета..."
-if ! curl -s --max-time 5 -o /dev/null http://cp.cloudflare.com/generate_204; then
+if ! ping -c 1 -W 5 8.8.8.8 >/dev/null 2>&1; then
     echo "Ошибка: нет интернета. Подключите коробку в LAN роутера." >&2
     exit 1
 fi
@@ -90,8 +90,7 @@ tailscale up \
     --login-server="$LOGIN_SERVER" \
     --authkey="$AUTH_KEY" \
     --accept-routes=false \
-    --advertise-routes="" \
-    --ssh
+    --advertise-routes=""
 
 echo "  Подключение инициировано"
 

@@ -1,19 +1,20 @@
 #!/bin/sh
-# watchdog.sh — Hardware + network watchdog
+# watchdog.sh — Network watchdog (проверка bridge)
 #
 # Проверяет:
 #   1. Bridge link status (eth0 + eth1 в br0)
-#   2. Пинает hardware watchdog (/dev/watchdog)
 #
-# Если bridge мёртв — не пинаем watchdog, через timeout коробка ребутнется.
-# Если bridge жив — пинаем watchdog, коробка продолжает работать.
+# Если bridge мёртв — ребут через reboot.
+# Hardware watchdog управляется системным watchdogd (OpenWrt),
+# мы не трогаем /dev/watchdog напрямую.
 #
 # Запускается через init.d/bridgebox-watchdog каждые N секунд.
 
-WATCHDOG_DEV="/dev/watchdog"
 BRIDGE="br0"
+FAIL_FILE="/tmp/bridgebox-wd-fails"
+MAX_FAILS=3
 
-# Проверка: оба порта в bridge и link up
+# Проверка: bridge существует и UP, оба порта присутствуют
 check_bridge() {
     # Проверяем что br0 существует
     if ! ip link show "$BRIDGE" >/dev/null 2>&1; then
@@ -39,26 +40,27 @@ check_bridge() {
         carrier=$(cat /sys/class/net/"$port"/carrier 2>/dev/null || echo "0")
         if [ "$carrier" != "1" ]; then
             logger -t bridgebox-wd "WARN: $port carrier=$carrier (кабель не подключён?)"
-            # Не фейлим — в боевой позиции один порт может быть без линка
-            # при начальном подключении
+            # Не фейлим — при начальном подключении один порт может быть без линка
         fi
     done
 
     return 0
 }
 
-# Пинаем hardware watchdog
-kick_watchdog() {
-    if [ -c "$WATCHDOG_DEV" ]; then
-        echo "V" > "$WATCHDOG_DEV"
-    fi
-}
-
 # --- Основная логика ---
 
 if check_bridge; then
-    kick_watchdog
+    # Сброс счётчика фейлов
+    echo "0" > "$FAIL_FILE"
 else
-    logger -t bridgebox-wd "Bridge проверка не пройдена, watchdog НЕ пнут — ребут через timeout"
-    # Не пинаем watchdog — hardware watchdog ребутнет коробку
+    fails=$(cat "$FAIL_FILE" 2>/dev/null || echo "0")
+    fails=$((fails + 1))
+    echo "$fails" > "$FAIL_FILE"
+
+    if [ "$fails" -ge "$MAX_FAILS" ]; then
+        logger -t bridgebox-wd "Bridge мёртв $fails раз подряд — ребут"
+        reboot
+    else
+        logger -t bridgebox-wd "Bridge проверка не пройдена ($fails/$MAX_FAILS)"
+    fi
 fi
