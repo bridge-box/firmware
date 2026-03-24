@@ -1,0 +1,9 @@
+# OpenWrt Image Builder (скачивается)
+openwrt-imagebuilder/
+openwrt-imagebuilder.tar.zst
+
+# Собранные образы
+output/
+
+# Не коммитить реальные auth-key
+files/etc/bridgebox/auth-key

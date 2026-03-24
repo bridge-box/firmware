@@ -1,0 +1,80 @@
+#!/bin/sh
+# 10-bridgebox-system — Базовая настройка системы при первой загрузке
+#
+# Выполняется один раз (uci-defaults).
+# Отключает ненужные сервисы, включает bridgebox сервисы.
+
+# --- Branding ---
+
+BRIDGEWRT_VERSION="0.0.1"
+
+cat > /etc/banner <<'BANNER'
+  ____       _     _            __        ______  _____
+ | __ ) _ __(_) __| | __ _  ___\ \      / /  _ \|_   _|
+ |  _ \| '__| |/ _` |/ _` |/ _ \\ \ /\ / /| |_) | | |
+ | |_) | |  | | (_| | (_| |  __/ \ V  V / |  _ <  | |
+ |____/|_|  |_|\__,_|\__, |\___|  \_/\_/  |_| \_\ |_|
+                      |___/
+ ---------------------------------------------------------
+ Transparent L2 Bridge + Remote Management
+ ---------------------------------------------------------
+BANNER
+
+# Дописываем динамическую информацию
+BOX_ID=$(cat /etc/bridgebox/box-id 2>/dev/null)
+if [ -n "$BOX_ID" ] && [ "$BOX_ID" != "TEMPLATE" ]; then
+    echo " Box: $BOX_ID  |  v${BRIDGEWRT_VERSION}" >> /etc/banner
+else
+    echo " v${BRIDGEWRT_VERSION}" >> /etc/banner
+fi
+echo "" >> /etc/banner
+
+# Release info для /etc/openwrt_release
+sed -i "s/DISTRIB_ID=.*/DISTRIB_ID='BridgeWRT'/" /etc/openwrt_release 2>/dev/null
+sed -i "s/DISTRIB_DESCRIPTION=.*/DISTRIB_DESCRIPTION='BridgeWRT ${BRIDGEWRT_VERSION}'/" /etc/openwrt_release 2>/dev/null
+
+# --- Hostname ---
+
+if [ -n "$BOX_ID" ] && [ "$BOX_ID" != "TEMPLATE" ]; then
+    # Hostname = box-id в нижнем регистре
+    HOSTNAME=$(echo "$BOX_ID" | tr 'A-Z' 'a-z')
+    uci set system.@system[0].hostname="$HOSTNAME"
+    echo "$HOSTNAME" > /proc/sys/kernel/hostname
+fi
+
+# --- Timezone ---
+
+uci set system.@system[0].timezone='MSK-3'
+uci set system.@system[0].zonename='Europe/Moscow'
+
+# --- Отключаем ненужные сервисы ---
+
+# dnsmasq — мост не раздаёт DNS/DHCP
+if [ -f /etc/init.d/dnsmasq ]; then
+    /etc/init.d/dnsmasq disable 2>/dev/null
+    /etc/init.d/dnsmasq stop 2>/dev/null
+fi
+
+# firewall — мост прозрачный, firewall не нужен
+if [ -f /etc/init.d/firewall ]; then
+    /etc/init.d/firewall disable 2>/dev/null
+    /etc/init.d/firewall stop 2>/dev/null
+fi
+
+# odhcpd — мост не раздаёт IPv6
+if [ -f /etc/init.d/odhcpd ]; then
+    /etc/init.d/odhcpd disable 2>/dev/null
+    /etc/init.d/odhcpd stop 2>/dev/null
+fi
+
+# --- Включаем bridgebox сервисы ---
+
+for svc in bridgebox-management bridgebox-watchdog bridgebox-wifi-client; do
+    if [ -f "/etc/init.d/$svc" ]; then
+        /etc/init.d/$svc enable
+    fi
+done
+
+uci commit system
+
+exit 0
