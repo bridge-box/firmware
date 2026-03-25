@@ -34,7 +34,7 @@ fi
 
 # Базовые пакеты: мост + management (Tailscale, Wi-Fi)
 # Wi-Fi драйверы: несколько популярных USB чипов для универсальности
-PACKAGES_BASE="tailscale wpa-supplicant kmod-rtl8xxxu kmod-mt76x0u kmod-ath9k-htc"
+PACKAGES_BASE="tailscale wpa-supplicant kmod-rtl8xxxu rtl8188eu-firmware kmod-mt76x0u kmod-ath9k-htc"
 
 if [ "$VARIANT" = "vanilla" ]; then
     # Эталон: чистая OpenWrt, идентичная скачанной с openwrt.org

@@ -1,0 +1,60 @@
+#!/bin/sh
+# 30-bridgebox-wifi — Поднимает Wi-Fi при подключении USB-свистка
+#
+# Реагирует на hotplug USB-события. Когда ядро определяет Wi-Fi чип
+# и создаёт phy — создаём wlan0 и подключаемся (если есть конфиг).
+#
+# Не блокирует загрузку. Работает при hot-plug в любой момент.
+
+WLAN="wlan0"
+WPA_CONF="/etc/bridgebox/wpa.conf"
+LOCK="/tmp/bridgebox-wifi.lock"
+
+# Только на add-события
+[ "$ACTION" = "add" ] || exit 0
+
+# Ждём появления phy (драйвер может загружаться асинхронно)
+# Проверяем 5 раз с паузой 1 сек — не блокирующе
+attempts=0
+PHY=""
+while [ $attempts -lt 5 ]; do
+    PHY=$(ls /sys/class/ieee80211/ 2>/dev/null | tail -1)
+    [ -n "$PHY" ] && break
+    attempts=$((attempts + 1))
+    sleep 1
+done
+
+[ -z "$PHY" ] && exit 0
+
+# Один экземпляр за раз
+[ -f "$LOCK" ] && exit 0
+echo $$ > "$LOCK"
+
+# wlan0 уже существует — ничего не делаем
+if [ -d "/sys/class/net/$WLAN" ]; then
+    rm -f "$LOCK"
+    exit 0
+fi
+
+# Создаём wlan0
+iw phy "$PHY" interface add "$WLAN" type managed 2>/dev/null
+if [ $? -ne 0 ]; then
+    logger -t bridgebox-wifi "Не удалось создать $WLAN на $PHY"
+    rm -f "$LOCK"
+    exit 1
+fi
+
+ip link set "$WLAN" up
+logger -t bridgebox-wifi "Создан $WLAN на $PHY (hotplug)"
+
+# Если есть wpa-конфиг — подключаемся
+if [ -f "$WPA_CONF" ]; then
+    wpa_supplicant -B -i "$WLAN" -c "$WPA_CONF" 2>/dev/null
+    sleep 3
+    udhcpc -i "$WLAN" -q -t 5 -n 2>/dev/null
+    logger -t bridgebox-wifi "$WLAN подключён к Wi-Fi"
+else
+    logger -t bridgebox-wifi "$WLAN поднят, ждём конфиг от бэкенда"
+fi
+
+rm -f "$LOCK"
