@@ -51,8 +51,8 @@ help:
 	@echo "  friendlyarm_nanopi-r3s   — NanoPi R3S (2GB, Pro)"
 	@echo ""
 	@echo "Варианты:"
-	@echo "  production (по умолчанию) — без LuCI, минимальный размер"
-	@echo "  dev                       — с LuCI + tcpdump"
+	@echo "  production (по умолчанию) — минимальный размер"
+	@echo "  dev                       — с tcpdump для отладки"
 
 docker-build:
 	@echo "=== Сборка Docker образа ==="

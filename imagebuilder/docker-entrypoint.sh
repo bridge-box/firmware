@@ -13,9 +13,11 @@ VARIANT="production"
 
 for arg in "$@"; do
     case "$arg" in
-        PROFILE=*)  PROFILE="${arg#PROFILE=}" ;;
-        BOX_ID=*)   BOX_ID="${arg#BOX_ID=}" ;;
-        VARIANT=*)  VARIANT="${arg#VARIANT=}" ;;
+        PROFILE=*)    PROFILE="${arg#PROFILE=}" ;;
+        BOX_ID=*)     BOX_ID="${arg#BOX_ID=}" ;;
+        VARIANT=*)    VARIANT="${arg#VARIANT=}" ;;
+        WIFI_SSID=*)  WIFI_SSID="${arg#WIFI_SSID=}" ;;
+        WIFI_PASS=*)  WIFI_PASS="${arg#WIFI_PASS=}" ;;
     esac
 done
 
@@ -32,16 +34,16 @@ fi
 
 # --- Пакеты ---
 
-# Базовые пакеты: мост + management (Tailscale, Wi-Fi)
+# Базовые пакеты: мост + management (Tailscale, Wi-Fi) + status page (uhttpd)
 # Wi-Fi драйверы: несколько популярных USB чипов для универсальности
-PACKAGES_BASE="tailscale wpa-supplicant kmod-rtl8xxxu rtl8188eu-firmware kmod-mt76x0u kmod-ath9k-htc"
+PACKAGES_BASE="tailscale wpa-supplicant uhttpd kmod-rtl8xxxu rtl8188eu-firmware kmod-mt76x0u kmod-ath9k-htc"
 
 if [ "$VARIANT" = "vanilla" ]; then
     # Эталон: чистая OpenWrt, идентичная скачанной с openwrt.org
     PACKAGES="luci"
     SKIP_FILES=1
 elif [ "$VARIANT" = "dev" ]; then
-    PACKAGES="$PACKAGES_BASE luci luci-ssl tcpdump"
+    PACKAGES="$PACKAGES_BASE tcpdump -luci -luci-ssl"
 else
     PACKAGES="$PACKAGES_BASE -luci -luci-ssl"
 fi
