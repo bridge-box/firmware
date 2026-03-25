@@ -1,19 +1,25 @@
-# BridgeBox Image Builder
+# BridgeWRT Image Builder
 
-Система сборки готовых образов OpenWrt для NanoPi R2S/R3S.
+Система сборки готовых образов OpenWrt для NanoPi R2S/R3S. Сборка через Docker — идемпотентная и воспроизводимая.
 
 ## Быстрый старт
 
 ```sh
-# 1. Скачать OpenWrt Image Builder (один раз)
-make download
-
-# 2. Собрать образ для одной коробки
-make image PROFILE=friendlyarm_nanopi-r3s BOX_ID=BB-001
-
+# 1. Собрать Docker образ (один раз, ~2 мин)
+make docker-build
+```
+```sh
+# 2. Собрать образ для одной коробки (~30 сек)
+make image PROFILE=friendlyarm_nanopi-r3s BOX_ID=BB-001 VARIANT=dev
+```
+```sh
 # 3. Собрать пакет из 100 образов
 make batch PROFILE=friendlyarm_nanopi-r3s START=1 COUNT=100
 ```
+
+## Требования
+
+- Docker
 
 ## Профили
 
@@ -52,24 +58,27 @@ make image PROFILE=friendlyarm_nanopi-r3s BOX_ID=BB-001 VARIANT=dev
 - Hardware watchdog + bridge health check
 - SSH firewall (только через Tailscale)
 - Уникальный BOX_ID для идентификации
+- BridgeWRT брендинг (баннер, release info)
 
 ## Прошивка
 
 ```sh
 # SD-карта (первая прошивка)
-gunzip -k output/bridgebox-BB-001-production-20260324.img.gz
-dd if=output/bridgebox-BB-001-production-20260324.img of=/dev/sdX bs=4M status=progress
+gunzip -k output/bridgewrt-BB-001-production-20260324.img.gz
+dd if=output/bridgewrt-BB-001-production-20260324.img of=/dev/sdX bs=4M status=progress
 
 # OTA через mesh (sysupgrade)
-scp output/bridgebox-BB-001-production-20260324.img.gz root@100.64.0.1:/tmp/
-ssh root@100.64.0.1 'sysupgrade -v /tmp/bridgebox-BB-001-production-20260324.img.gz'
+scp output/bridgewrt-BB-001-production-20260324.img.gz root@100.64.0.1:/tmp/
+ssh root@100.64.0.1 'sysupgrade -v /tmp/bridgewrt-BB-001-production-20260324.img.gz'
 ```
 
 ## Структура
 
 ```
 imagebuilder/
-├── Makefile                     # Оркестрация
+├── Dockerfile                   # Docker образ с Image Builder
+├── docker-entrypoint.sh         # Точка входа
+├── Makefile                     # Оркестрация (обёртка над Docker)
 ├── profiles/                    # Профили устройств
 ├── files/                       # Overlay на rootfs
 │   ├── etc/config/network       # Bridge конфиг
@@ -77,6 +86,6 @@ imagebuilder/
 │   ├── etc/uci-defaults/        # First-boot скрипты
 │   ├── etc/bridgebox/box-id     # ID коробки
 │   └── usr/lib/bridgebox/       # Утилиты
-├── scripts/                     # Скрипты сборки
-└── output/                      # Готовые образы
+├── scripts/                     # Вспомогательные скрипты
+└── output/                      # Готовые образы (gitignored)
 ```

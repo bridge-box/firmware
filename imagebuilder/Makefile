@@ -1,6 +1,6 @@
-# BridgeBox Image Builder — Makefile
+	# BridgeWRT Image Builder — Makefile
 #
-# Сборка готовых образов OpenWrt для NanoPi R2S/R3S
+# Сборка готовых образов OpenWrt для NanoPi R2S/R3S через Docker.
 #
 # Использование:
 #   make image PROFILE=friendlyarm_nanopi-r3s BOX_ID=BB-001
@@ -18,14 +18,8 @@
 
 SHELL := /bin/sh
 
-# OpenWrt Image Builder
-OPENWRT_VERSION := 25.12.0-rc1
-OPENWRT_TARGET  := rockchip/armv8
-OPENWRT_URL_BASE := https://downloads.openwrt.org/releases/$(OPENWRT_VERSION)/targets/$(subst /,-,$(OPENWRT_TARGET))
-
-IB_DIR    := $(CURDIR)/openwrt-imagebuilder
-IB_TAR    := $(IB_DIR).tar.zst
-OUTPUT_DIR := $(CURDIR)/output
+DOCKER_IMAGE := bridgewrt-builder
+OUTPUT_DIR   := $(CURDIR)/output
 
 # Параметры сборки
 PROFILE  ?=
@@ -35,53 +29,21 @@ AUTH_KEY ?=
 START    ?= 1
 COUNT    ?= 10
 
-# Пакеты — базовый набор
-PACKAGES_BASE := \
-	tailscale \
-	wpa-supplicant \
-	kmod-br-netfilter \
-	kmod-nft-queue \
-	kmod-rtl8xxxu \
-	rtl8188eu-firmware \
-	iw \
-	-dnsmasq \
-	-firewall4 \
-	-odhcpd-ipv6only
-
-# Пакеты — dev добавляет LuCI и tcpdump
-PACKAGES_DEV := \
-	luci \
-	luci-ssl \
-	tcpdump
-
-# Пакеты — production убирает LuCI
-PACKAGES_PRODUCTION := \
-	-luci \
-	-luci-ssl
-
-# Включаем профиль устройства (если задан)
-ifneq ($(PROFILE),)
--include profiles/$(subst friendlyarm_nanopi-,,$(PROFILE)).mk
-endif
-
-# Итоговый список пакетов
-ifeq ($(VARIANT),dev)
-PACKAGES := $(PACKAGES_BASE) $(PACKAGES_DEV)
-else
-PACKAGES := $(PACKAGES_BASE) $(PACKAGES_PRODUCTION)
-endif
-
 # --- Таргеты ---
 
-.PHONY: image batch clean download help
+# SD-карта для прошивки (автоопределение или задать вручную: SDCARD=/dev/sdX)
+SDCARD ?=
+
+.PHONY: image batch clean docker-build flash help
 
 help:
-	@echo "BridgeBox Image Builder"
+	@echo "BridgeWRT Image Builder"
 	@echo ""
 	@echo "Таргеты:"
-	@echo "  make download                          — скачать Image Builder"
+	@echo "  make docker-build                      — собрать Docker образ (один раз)"
 	@echo "  make image PROFILE=... BOX_ID=BB-001   — собрать один образ"
 	@echo "  make batch PROFILE=... COUNT=10         — собрать пакет образов"
+	@echo "  make flash SDCARD=/dev/sdX              — прошить SD-карту (последний образ)"
 	@echo "  make clean                              — очистить output/"
 	@echo ""
 	@echo "Профили:"
@@ -92,47 +54,60 @@ help:
 	@echo "  production (по умолчанию) — без LuCI, минимальный размер"
 	@echo "  dev                       — с LuCI + tcpdump"
 
-download: $(IB_DIR)/Makefile
+docker-build:
+	@echo "=== Сборка Docker образа ==="
+	docker build --build-arg CACHEBUST=$(shell date +%s) -t $(DOCKER_IMAGE) .
 
-$(IB_DIR)/Makefile:
-	@echo "=== Скачивание OpenWrt Image Builder ==="
-	@sh scripts/build.sh download "$(OPENWRT_VERSION)" "$(OPENWRT_TARGET)"
-
-image: $(IB_DIR)/Makefile
-	@# Проверки
+image:
 	@if [ -z "$(PROFILE)" ]; then echo "Ошибка: PROFILE не задан" >&2; exit 1; fi
 	@if [ -z "$(BOX_ID)" ]; then echo "Ошибка: BOX_ID не задан" >&2; exit 1; fi
-	@# Инжектим BOX_ID
-	@sh scripts/inject-identity.sh "$(BOX_ID)" "$(AUTH_KEY)"
-	@# Собираем
-	@echo "=== Сборка образа: $(BOX_ID) ($(PROFILE), $(VARIANT)) ==="
+	@# Проверяем что Docker образ собран
+	@docker image inspect $(DOCKER_IMAGE) >/dev/null 2>&1 || { \
+		echo "Docker образ не найден, собираем..."; \
+		$(MAKE) docker-build; \
+	}
 	@mkdir -p "$(OUTPUT_DIR)"
-	$(MAKE) -C "$(IB_DIR)" image \
+	docker run --rm --network=host \
+		-v "$(OUTPUT_DIR)":/output \
+		-e http_proxy=http://127.0.0.1:8888 \
+		-e https_proxy=http://127.0.0.1:8888 \
+		$(DOCKER_IMAGE) \
 		PROFILE="$(PROFILE)" \
-		PACKAGES="$(PACKAGES)" \
-		FILES="$(CURDIR)/files" \
-		BIN_DIR="$(OUTPUT_DIR)"
-	@# Переименовываем
-	@IMGFILE=$$(ls "$(OUTPUT_DIR)"/*-$(PROFILE)-ext4-sysupgrade.img.gz 2>/dev/null | head -1); \
-	if [ -n "$$IMGFILE" ]; then \
-		NEWNAME="$(OUTPUT_DIR)/bridgebox-$(BOX_ID)-$(VARIANT)-$$(date +%Y%m%d).img.gz"; \
-		mv "$$IMGFILE" "$$NEWNAME"; \
-		echo ""; \
-		echo "=== Готово: $$NEWNAME ==="; \
-		echo "  Размер: $$(du -h "$$NEWNAME" | cut -f1)"; \
-		echo "  BOX_ID: $(BOX_ID)"; \
-	else \
-		echo "Ошибка: образ не найден в $(OUTPUT_DIR)" >&2; exit 1; \
-	fi
+		BOX_ID="$(BOX_ID)" \
+		VARIANT="$(VARIANT)" \
+		$(if $(AUTH_KEY),AUTH_KEY="$(AUTH_KEY)")
 
-batch: $(IB_DIR)/Makefile
+batch:
 	@if [ -z "$(PROFILE)" ]; then echo "Ошибка: PROFILE не задан" >&2; exit 1; fi
+	@# Проверяем что Docker образ собран
+	@docker image inspect $(DOCKER_IMAGE) >/dev/null 2>&1 || { \
+		echo "Docker образ не найден, собираем..."; \
+		$(MAKE) docker-build; \
+	}
+	@mkdir -p "$(OUTPUT_DIR)"
 	@sh scripts/gen-batch.sh "$(START)" "$(COUNT)" "$(PROFILE)" "$(VARIANT)" "$(AUTH_KEY)"
+
+flash:
+	@# Прошивка SD-карты. Обнуляет диск перед записью чтобы ext4 не сохранял старое состояние.
+	@if [ -z "$(SDCARD)" ]; then echo "Ошибка: SDCARD не задан (make flash SDCARD=/dev/sdX)" >&2; exit 1; fi
+	@if [ ! -b "$(SDCARD)" ]; then echo "Ошибка: $(SDCARD) не блочное устройство" >&2; exit 1; fi
+	@IMGFILE=$$(ls -t "$(OUTPUT_DIR)"/bridgewrt-*.img.gz 2>/dev/null | head -1); \
+	if [ -z "$$IMGFILE" ]; then echo "Ошибка: нет образов в $(OUTPUT_DIR)/" >&2; exit 1; fi; \
+	echo "=== Прошивка SD ==="; \
+	echo "  Образ:  $$IMGFILE"; \
+	echo "  Диск:   $(SDCARD)"; \
+	echo ""; \
+	echo "Отмонтируем партиции..."; \
+	for p in $(SDCARD)*; do sudo umount "$$p" 2>/dev/null || true; done; \
+	echo "Обнуляем первые 200MB (чистый старт)..."; \
+	sudo dd if=/dev/zero of=$(SDCARD) bs=4M count=50 status=progress conv=fsync 2>&1; \
+	echo "Записываем образ..."; \
+	zcat "$$IMGFILE" | sudo dd of=$(SDCARD) bs=4M status=progress conv=fsync 2>&1; \
+	sudo sync; \
+	echo ""; \
+	echo "=== Готово. Вставляй SD в коробку. ==="
 
 clean:
 	@echo "Очистка output/..."
 	@rm -rf "$(OUTPUT_DIR)"
-	@# Восстанавливаем файл идентичности в шаблонное состояние
-	@echo "TEMPLATE" > files/etc/bridgebox/box-id
-	@rm -f files/etc/bridgebox/auth-key
 	@echo "Готово"

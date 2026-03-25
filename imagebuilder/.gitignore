@@ -1,7 +1,3 @@
-# OpenWrt Image Builder (скачивается)
-openwrt-imagebuilder/
-openwrt-imagebuilder.tar.zst
-
 # Собранные образы
 output/
 

@@ -14,6 +14,11 @@ BRIDGE="br0"
 FAIL_FILE="/tmp/bridgebox-wd-fails"
 MAX_FAILS=3
 
+# В setup mode bridge ещё не настроен — не проверяем, не ребутим
+if ! ip link show "$BRIDGE" >/dev/null 2>&1; then
+    exit 0
+fi
+
 # Проверка: bridge существует и UP, оба порта присутствуют
 check_bridge() {
     # Проверяем что br0 существует
