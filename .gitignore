@@ -1,2 +1,4 @@
 /.idea/
 /CLAUDE.md
+/agent/.gradle/
+/agent/build/
