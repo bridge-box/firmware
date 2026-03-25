@@ -1,0 +1,173 @@
+#!/bin/sh
+# bb-agent — агент BridgeBox (shell-версия)
+#
+# Регистрация, heartbeat и статус через HTTP API бэкенда.
+# POSIX sh + wget, совместим с busybox/ash/musl.
+#
+# Использование:
+#   bb-agent register    — зарегистрировать на бэкенде
+#   bb-agent heartbeat   — отправить heartbeat
+#   bb-agent status      — запросить статус
+
+set -e
+
+VERSION="0.1.0"
+BOX_ID_FILE="/etc/bridgebox/box-id"
+STATE_FILE="/etc/bridgebox/state"
+BACKEND_URL_FILE="/etc/bridgebox/backend-url"
+
+# Бэкенд URL: файл → переменная → дефолт
+get_backend_url() {
+    if [ -f "$BACKEND_URL_FILE" ]; then
+        cat "$BACKEND_URL_FILE"
+    elif [ -n "$BACKEND_URL" ]; then
+        echo "$BACKEND_URL"
+    else
+        echo "http://localhost:8080"
+    fi
+}
+
+# BOX_ID: файл → переменная → генерация из MAC
+get_box_id() {
+    if [ -f "$BOX_ID_FILE" ]; then
+        BOX_ID=$(cat "$BOX_ID_FILE")
+        if [ -n "$BOX_ID" ] && [ "$BOX_ID" != "TEMPLATE" ]; then
+            echo "$BOX_ID"
+            return
+        fi
+    fi
+
+    if [ -n "$BOX_ID" ]; then
+        echo "$BOX_ID"
+        return
+    fi
+
+    # Генерируем из MAC eth0
+    MAC=$(get_mac)
+    HASH=$(echo -n "$MAC" | md5sum | cut -c1-6 | tr 'a-f' 'A-F')
+    BOX_ID="BB-$HASH"
+    echo "$BOX_ID" > "$BOX_ID_FILE"
+    echo "[bb-agent] Сгенерирован BOX_ID: $BOX_ID" >&2
+    echo "$BOX_ID"
+}
+
+get_mac() {
+    if [ -f /sys/class/net/eth0/address ]; then
+        cat /sys/class/net/eth0/address
+    elif [ -n "$MAC_ETH0" ]; then
+        echo "$MAC_ETH0"
+    else
+        echo "error: не могу прочитать MAC eth0" >&2
+        exit 1
+    fi
+}
+
+# HTTP POST с JSON (wget, busybox-совместимый)
+http_post() {
+    URL="$1"
+    JSON="$2"
+    wget -q -O - --header="Content-Type: application/json" --post-data="$JSON" "$URL" 2>/dev/null
+}
+
+# HTTP GET
+http_get() {
+    wget -q -O - "$1" 2>/dev/null
+}
+
+# --- Команды ---
+
+cmd_register() {
+    BASE=$(get_backend_url)
+    BOX_ID=$(get_box_id)
+    MAC=$(get_mac)
+
+    echo "=== BridgeBox Agent: регистрация ==="
+    echo "  BOX_ID:  $BOX_ID"
+    echo "  MAC:     $MAC"
+    echo "  Backend: $BASE"
+
+    RESPONSE=$(http_post "$BASE/api/devices/register" \
+        "{\"deviceId\":\"$BOX_ID\",\"macEth0\":\"$MAC\"}")
+
+    if [ -z "$RESPONSE" ]; then
+        echo "  ОШИБКА: бэкенд не ответил" >&2
+        exit 1
+    fi
+
+    # Извлекаем state из JSON (простой парсинг без jq)
+    STATE=$(echo "$RESPONSE" | grep -o '"state":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+    if [ -n "$STATE" ]; then
+        echo "$STATE" | tr 'A-Z' 'a-z' > "$STATE_FILE"
+        echo "  State:   $STATE"
+    fi
+
+    echo "=== Регистрация завершена ==="
+}
+
+cmd_heartbeat() {
+    BASE=$(get_backend_url)
+    BOX_ID=$(get_box_id)
+
+    WLAN_CONNECTED="false"
+    [ "$(cat /sys/class/net/wlan0/operstate 2>/dev/null)" = "up" ] && WLAN_CONNECTED="true"
+
+    BRIDGE_UP="false"
+    [ "$(cat /sys/class/net/br0/operstate 2>/dev/null)" = "up" ] && BRIDGE_UP="true"
+
+    UPTIME=$(cut -d. -f1 /proc/uptime 2>/dev/null || echo "0")
+
+    RESPONSE=$(http_post "$BASE/api/devices/$BOX_ID/heartbeat" \
+        "{\"deviceId\":\"$BOX_ID\",\"uptime\":$UPTIME,\"wlanConnected\":$WLAN_CONNECTED,\"bridgeUp\":$BRIDGE_UP}")
+
+    if [ -z "$RESPONSE" ]; then
+        echo "ОШИБКА: бэкенд не ответил" >&2
+        exit 1
+    fi
+
+    STATE=$(echo "$RESPONSE" | grep -o '"state":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [ -n "$STATE" ]; then
+        echo "$STATE" | tr 'A-Z' 'a-z' > "$STATE_FILE"
+    fi
+
+    echo "$STATE"
+}
+
+cmd_status() {
+    BASE=$(get_backend_url)
+    BOX_ID=$(get_box_id)
+
+    RESPONSE=$(http_get "$BASE/api/devices/$BOX_ID/state")
+
+    if [ -z "$RESPONSE" ]; then
+        echo "ОШИБКА: бэкенд не ответил" >&2
+        exit 1
+    fi
+
+    echo "$RESPONSE"
+}
+
+# --- Main ---
+
+case "${1:-}" in
+    register)
+        cmd_register
+        ;;
+    heartbeat)
+        cmd_heartbeat
+        ;;
+    status)
+        cmd_status
+        ;;
+    *)
+        echo "bb-agent v$VERSION — BridgeBox Device Agent (sh)"
+        echo ""
+        echo "Использование:"
+        echo "  bb-agent register   — зарегистрировать на бэкенде"
+        echo "  bb-agent heartbeat  — отправить heartbeat"
+        echo "  bb-agent status     — запросить статус"
+        echo ""
+        echo "Переменные окружения:"
+        echo "  BACKEND_URL  — адрес бэкенда (по умолчанию http://localhost:8080)"
+        ;;
+esac

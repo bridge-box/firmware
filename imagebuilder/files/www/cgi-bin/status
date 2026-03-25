@@ -1,0 +1,131 @@
+#!/bin/sh
+# status — CGI status page для BridgeBox
+# Показывает состояние коробки: BOX_ID, state, сетевые интерфейсы
+# Доступен на http://192.168.77.1/cgi-bin/status
+
+BOX_ID=$(cat /etc/bridgebox/box-id 2>/dev/null || echo "unknown")
+STATE=$(cat /etc/bridgebox/state 2>/dev/null || echo "unknown")
+
+# Сетевые интерфейсы
+WLAN0_IP=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
+WLAN0_STATE=$(cat /sys/class/net/wlan0/operstate 2>/dev/null || echo "down")
+BR0_STATE=$(cat /sys/class/net/br0/operstate 2>/dev/null || echo "down")
+ETH0_CARRIER=$(cat /sys/class/net/eth0/carrier 2>/dev/null || echo "0")
+ETH1_CARRIER=$(cat /sys/class/net/eth1/carrier 2>/dev/null || echo "0")
+TS_IP=$(ip -4 addr show tailscale0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
+
+# Uptime
+UPTIME=$(cut -d. -f1 /proc/uptime 2>/dev/null || echo "0")
+UPTIME_MIN=$((UPTIME / 60))
+UPTIME_HOURS=$((UPTIME_MIN / 60))
+UPTIME_MIN=$((UPTIME_MIN % 60))
+
+# Версия
+VERSION=$(grep 'DISTRIB_DESCRIPTION' /etc/openwrt_release 2>/dev/null | cut -d"'" -f2)
+
+# QR deep link (только для unclaimed)
+DEEPLINK=""
+if [ "$STATE" = "unclaimed" ]; then
+    DEEPLINK="https://t.me/bridgebox_bot?start=${BOX_ID}"
+fi
+
+# --- HTTP ответ ---
+echo "Content-Type: text/html; charset=utf-8"
+echo ""
+
+cat <<EOF
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BridgeBox — ${BOX_ID}</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, sans-serif; background: #0a0a0a; color: #e0e0e0; padding: 20px; }
+.container { max-width: 480px; margin: 0 auto; }
+h1 { font-size: 1.4em; margin-bottom: 4px; }
+.version { color: #888; font-size: 0.8em; margin-bottom: 20px; }
+.card { background: #1a1a1a; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+.card-title { font-size: 0.75em; text-transform: uppercase; letter-spacing: 1px; color: #888; margin-bottom: 8px; }
+.row { display: flex; justify-content: space-between; padding: 4px 0; }
+.label { color: #aaa; }
+.value { font-weight: 600; }
+.ok { color: #4ade80; }
+.warn { color: #facc15; }
+.err { color: #f87171; }
+.state-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.85em; font-weight: 600; text-transform: uppercase; }
+.state-setup { background: #1e3a5f; color: #60a5fa; }
+.state-unclaimed { background: #3b2f00; color: #facc15; }
+.state-claimed { background: #1a3a2a; color: #4ade80; }
+.state-active { background: #0a3a1a; color: #22c55e; }
+.state-bypass { background: #3a1a1a; color: #f87171; }
+.qr { text-align: center; margin: 16px 0; }
+.qr img { border-radius: 8px; }
+.deeplink { text-align: center; margin-top: 8px; }
+.deeplink a { color: #60a5fa; text-decoration: none; font-size: 0.85em; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>BridgeBox</h1>
+<div class="version">${VERSION} &middot; ${BOX_ID}</div>
+
+<div class="card">
+  <div class="card-title">Состояние</div>
+  <div class="row">
+    <span class="label">Статус</span>
+    <span class="state-badge state-${STATE}">${STATE}</span>
+  </div>
+  <div class="row">
+    <span class="label">Uptime</span>
+    <span class="value">${UPTIME_HOURS}ч ${UPTIME_MIN}м</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Сеть</div>
+  <div class="row">
+    <span class="label">Wi-Fi (wlan0)</span>
+    <span class="value $([ "$WLAN0_STATE" = "up" ] && echo ok || echo err)">${WLAN0_STATE}$([ -n "$WLAN0_IP" ] && echo " — ${WLAN0_IP}")</span>
+  </div>
+  <div class="row">
+    <span class="label">Tailscale</span>
+    <span class="value $([ -n "$TS_IP" ] && echo ok || echo err)">$([ -n "$TS_IP" ] && echo "${TS_IP}" || echo "offline")</span>
+  </div>
+  <div class="row">
+    <span class="label">Мост (br0)</span>
+    <span class="value $([ "$BR0_STATE" = "up" ] && echo ok || echo warn)">${BR0_STATE}</span>
+  </div>
+  <div class="row">
+    <span class="label">WAN (eth0)</span>
+    <span class="value $([ "$ETH0_CARRIER" = "1" ] && echo ok || echo err)">$([ "$ETH0_CARRIER" = "1" ] && echo "link" || echo "no link")</span>
+  </div>
+  <div class="row">
+    <span class="label">LAN (eth1)</span>
+    <span class="value $([ "$ETH1_CARRIER" = "1" ] && echo ok || echo err)">$([ "$ETH1_CARRIER" = "1" ] && echo "link" || echo "no link")</span>
+  </div>
+</div>
+
+EOF
+
+# QR-код для unclaimed — генерируем через внешний API (легче чем тащить утилиту)
+if [ -n "$DEEPLINK" ]; then
+    cat <<EOF
+<div class="card">
+  <div class="card-title">Активация</div>
+  <div class="qr">
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=$(echo "$DEEPLINK" | sed 's/:/%3A/g; s/\//%2F/g; s/?/%3F/g; s/=/%3D/g')" alt="QR" width="200" height="200">
+  </div>
+  <div class="deeplink">
+    <a href="${DEEPLINK}">Открыть в Telegram</a>
+  </div>
+</div>
+EOF
+fi
+
+cat <<EOF
+</div>
+</body>
+</html>
+EOF
