@@ -5,3 +5,5 @@
 /.kotlin/
 /.gradle/
 /build/
+/agent-rs/target/
+/agent-rs/.cargo/

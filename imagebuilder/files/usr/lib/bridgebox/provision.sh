@@ -112,11 +112,13 @@ check_state() {
 }
 
 check_box_id() {
+    # BOX_ID генерируется автоматически при первом запуске bb-agent
     BOX_ID=$(cat "$BOX_ID_FILE" 2>/dev/null)
-    if [ -z "$BOX_ID" ] || [ "$BOX_ID" = "TEMPLATE" ]; then
-        err "BOX_ID не задан (файл $BOX_ID_FILE)"
+    if [ -n "$BOX_ID" ] && [ "$BOX_ID" != "TEMPLATE" ]; then
+        log "BOX_ID: $BOX_ID"
+    else
+        log "BOX_ID будет сгенерирован автоматически из MAC eth0"
     fi
-    log "BOX_ID: $BOX_ID"
 }
 
 check_wifi() {
@@ -197,16 +199,14 @@ check_wifi
 check_backend
 check_agent
 
-# Регистрация на бэкенде
+# Регистрация на бэкенде + автоматический перевод в UNCLAIMED
 log "Регистрация на бэкенде..."
 if ! bb-agent register; then
     err "bb-agent register завершился с ошибкой"
 fi
 
-# Переводим в unclaimed
-echo "unclaimed" > "$STATE_FILE"
-log "Состояние: unclaimed"
-
+# bb-agent register сам генерит ID, регистрирует и переводит в UNCLAIMED
+BOX_ID=$(cat "$BOX_ID_FILE" 2>/dev/null)
 log "=== Provisioning завершён ==="
-log "Коробка $(cat $BOX_ID_FILE) готова к отправке."
+log "Коробка $BOX_ID готова к отправке."
 log "Status page: http://192.168.77.1/"

@@ -1,0 +1,24 @@
+#!/bin/sh /etc/rc.common
+# bridgebox-agent — регистрация устройства при загрузке
+# Генерирует BOX_ID из MAC eth0, регистрируется на backend → статус UNCLAIMED
+
+START=99
+
+boot() {
+    # Ждём сеть (Wi-Fi может подниматься дольше)
+    local attempt=0
+    while [ $attempt -lt 30 ]; do
+        WLAN_STATE=$(cat /sys/class/net/wlan0/operstate 2>/dev/null)
+        [ "$WLAN_STATE" = "up" ] && break
+        attempt=$((attempt + 1))
+        sleep 2
+    done
+
+    if [ "$WLAN_STATE" != "up" ]; then
+        logger -t bb-agent "Wi-Fi не поднялся за 60 сек, регистрация отложена"
+        return 1
+    fi
+
+    # Запускаем регистрацию
+    /usr/bin/bb-agent register 2>&1 | logger -t bb-agent
+}
