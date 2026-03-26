@@ -51,4 +51,7 @@ uci commit dhcp
 # --- Состояние ---
 echo 'setup' > /etc/bridgebox/state
 
+# --- Автозапуск агента ---
+/etc/init.d/bridgebox-agent enable 2>/dev/null || true
+
 exit 0

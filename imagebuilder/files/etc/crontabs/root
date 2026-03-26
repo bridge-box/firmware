@@ -1,0 +1,2 @@
+# Heartbeat каждые 5 минут — синхронизирует state + проверяет mesh
+*/5 * * * * /usr/bin/bb-agent heartbeat 2>&1 | logger -t bb-agent

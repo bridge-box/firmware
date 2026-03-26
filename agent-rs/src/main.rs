@@ -12,8 +12,9 @@ fn main() -> ExitCode {
         "heartbeat" => cmd_heartbeat(),
         "status" => cmd_status(),
         "generate-id" => cmd_generate_id(),
+        "ensure-mesh" => cmd_ensure_mesh(),
         _ => {
-            eprintln!("bb-agent <register|heartbeat|status|generate-id>");
+            eprintln!("bb-agent <register|heartbeat|status|generate-id|ensure-mesh>");
             return ExitCode::FAILURE;
         }
     };
@@ -41,6 +42,17 @@ fn cmd_register() -> Result<(), String> {
     device::write_state(&register_resp.state)?;
     println!("  State:   {:?}", register_resp.state);
 
+    // Если backend вернул auth key — поднимаем Tailscale
+    if let Some(auth_key) = &register_resp.tailscale_auth_key {
+        println!("  Tailscale: получен auth key");
+        match device::tailscale_up(auth_key) {
+            Ok(()) => println!("  Tailscale: подключён"),
+            Err(e) => eprintln!("  Tailscale: ошибка — {e}"),
+        }
+    } else {
+        println!("  Tailscale: auth key не получен, попробую позже");
+    }
+
     println!("=== Регистрация завершена ===");
     Ok(())
 }
@@ -48,6 +60,19 @@ fn cmd_register() -> Result<(), String> {
 fn cmd_heartbeat() -> Result<(), String> {
     let box_id = device::read_box_id()?;
     let backend_url = device::read_backend_url();
+
+    // Проверяем mesh — если не подключён, пытаемся получить ключ
+    if !device::is_tailscale_up() {
+        eprintln!("[bb-agent] Tailscale не подключён, запрашиваю auth key...");
+        match api::request_auth_key(&backend_url, &box_id) {
+            Ok(resp) => {
+                if let Some(auth_key) = &resp.tailscale_auth_key {
+                    let _ = device::tailscale_up(auth_key);
+                }
+            }
+            Err(e) => eprintln!("[bb-agent] Не удалось получить auth key: {e}"),
+        }
+    }
 
     let wlan_connected = device::is_interface_up("wlan0");
     let bridge_up = device::is_interface_up("br0");
@@ -73,4 +98,21 @@ fn cmd_generate_id() -> Result<(), String> {
     let box_id = device::ensure_box_id()?;
     println!("{box_id}");
     Ok(())
+}
+
+/// Ensure mesh — проверяет Tailscale, если не подключён — запрашивает ключ и подключает
+fn cmd_ensure_mesh() -> Result<(), String> {
+    if device::is_tailscale_up() {
+        println!("Tailscale: уже подключён");
+        return Ok(());
+    }
+
+    let box_id = device::read_box_id()?;
+    let backend_url = device::read_backend_url();
+
+    let resp = api::request_auth_key(&backend_url, &box_id)?;
+    let auth_key = resp.tailscale_auth_key
+        .ok_or("backend не вернул auth key")?;
+
+    device::tailscale_up(&auth_key)
 }

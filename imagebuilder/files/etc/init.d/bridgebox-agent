@@ -19,6 +19,13 @@ boot() {
         return 1
     fi
 
+    # DHCP + DNS (если ещё не получен)
+    IP=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
+    if [ -z "$IP" ]; then
+        udhcpc -i wlan0 -q -t 5 -n 2>/dev/null
+    fi
+    echo "nameserver 8.8.8.8" > /tmp/resolv.conf
+
     # Запускаем регистрацию
     /usr/bin/bb-agent register 2>&1 | logger -t bb-agent
 }

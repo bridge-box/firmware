@@ -27,9 +27,9 @@ if [ -z "$PROFILE" ]; then
     exit 1
 fi
 
+# BOX_ID опционален — если не задан, генерируется на устройстве из MAC eth0
 if [ -z "$BOX_ID" ]; then
-    echo "Ошибка: BOX_ID не задан" >&2
-    exit 1
+    BOX_ID="TEMPLATE"
 fi
 
 # --- Пакеты ---
@@ -83,11 +83,19 @@ if [ -z "$IMGFILE" ]; then
     exit 1
 fi
 
-NEWNAME="bridgewrt-${BOX_ID}-${VARIANT}-$(date +%Y%m%d).img.gz"
+if [ "$BOX_ID" = "TEMPLATE" ]; then
+    NEWNAME="bridgewrt-${VARIANT}-$(date +%Y%m%d).img.gz"
+else
+    NEWNAME="bridgewrt-${BOX_ID}-${VARIANT}-$(date +%Y%m%d).img.gz"
+fi
 cp "$IMGFILE" "/output/$NEWNAME"
 
 echo ""
 echo "=== Готово ==="
 echo "  Образ:  /output/$NEWNAME"
 echo "  Размер: $(du -h "/output/$NEWNAME" | cut -f1)"
-echo "  BOX_ID: $BOX_ID"
+if [ "$BOX_ID" != "TEMPLATE" ]; then
+    echo "  BOX_ID: $BOX_ID"
+else
+    echo "  BOX_ID: генерируется на устройстве"
+fi

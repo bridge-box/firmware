@@ -35,6 +35,7 @@ pub struct RegisterRequest {
 pub struct RegisterResponse {
     pub device_id: String,
     pub state: DeviceState,
+    pub tailscale_auth_key: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

@@ -31,6 +31,19 @@ pub fn get_state(base_url: &str, device_id: &str) -> Result<DeviceStateResponse,
         .map_err(|e| format!("status: ошибка парсинга ответа: {e}"))
 }
 
+/// GET /api/devices/{id}/auth-key — fallback если при register не получили ключ
+pub fn request_auth_key(base_url: &str, device_id: &str) -> Result<RegisterResponse, String> {
+    let url = format!("{base_url}/api/devices/{device_id}/auth-key");
+
+    let mut resp = ureq::get(&url)
+        .call()
+        .map_err(|e| format!("auth-key: {e}"))?
+        .into_body();
+
+    serde_json::from_reader(resp.as_reader())
+        .map_err(|e| format!("auth-key: ошибка парсинга ответа: {e}"))
+}
+
 /// POST /api/devices/{id}/heartbeat
 pub fn heartbeat(
     base_url: &str,

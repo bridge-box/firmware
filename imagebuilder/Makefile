@@ -23,7 +23,7 @@ OUTPUT_DIR   := $(CURDIR)/output
 
 # Параметры сборки
 PROFILE  ?=
-BOX_ID   ?=
+BOX_ID   ?= TEMPLATE
 VARIANT  ?= production
 AUTH_KEY ?=
 START    ?= 1
@@ -60,7 +60,6 @@ docker-build:
 
 image:
 	@if [ -z "$(PROFILE)" ]; then echo "Ошибка: PROFILE не задан" >&2; exit 1; fi
-	@if [ -z "$(BOX_ID)" ]; then echo "Ошибка: BOX_ID не задан" >&2; exit 1; fi
 	@# Проверяем что Docker образ собран
 	@docker image inspect $(DOCKER_IMAGE) >/dev/null 2>&1 || { \
 		echo "Docker образ не найден, собираем..."; \

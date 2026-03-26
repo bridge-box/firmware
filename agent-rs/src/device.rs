@@ -87,8 +87,53 @@ pub fn write_state(state: &DeviceState) -> Result<(), String> {
     fs::create_dir_all(dir)
         .map_err(|e| format!("не удалось создать {}: {e}", dir.display()))?;
 
-    fs::write(STATE_FILE, state.to_string())
+    fs::write(STATE_FILE, format!("{}\n", state))
         .map_err(|e| format!("не удалось записать {STATE_FILE}: {e}"))
+}
+
+const HEADSCALE_URL: &str = "https://hs.bridge-box.online";
+
+/// Проверяет, подключён ли Tailscale (BackendState == Running).
+pub fn is_tailscale_up() -> bool {
+    let output = match std::process::Command::new("tailscale")
+        .args(["status", "--json"])
+        .output()
+    {
+        Ok(o) => o,
+        Err(_) => return false,
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout.contains("\"BackendState\":\"Running\"")
+}
+
+/// Подключает Tailscale с auth key.
+pub fn tailscale_up(auth_key: &str) -> Result<(), String> {
+    let headscale_url = fs::read_to_string("/etc/bridgebox/headscale-url")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| HEADSCALE_URL.to_string());
+
+    eprintln!("[bb-agent] Tailscale up: server={headscale_url}");
+
+    let output = std::process::Command::new("tailscale")
+        .args([
+            "up",
+            &format!("--login-server={headscale_url}"),
+            &format!("--authkey={auth_key}"),
+            "--accept-routes=false",
+        ])
+        .output()
+        .map_err(|e| format!("tailscale up: {e}"))?;
+
+    if output.status.success() {
+        eprintln!("[bb-agent] Tailscale подключён");
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("tailscale up failed: {stderr}"))
+    }
 }
 
 /// Проверяет, поднят ли сетевой интерфейс.

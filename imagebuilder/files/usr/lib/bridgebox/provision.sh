@@ -65,13 +65,13 @@ EOF
     iw phy "$PHY" interface add wlan0 type managed || err "Не удалось создать wlan0"
     ip link set wlan0 up || err "Не удалось поднять wlan0"
 
-    # Подключаемся
-    wpa_supplicant -B -i wlan0 -c "$WPA_CONF" || err "wpa_supplicant не запустился"
+    # Подключаемся (nl80211 явно — без него rtl8xxxu уходит в deauth loop)
+    wpa_supplicant -B -i wlan0 -c "$WPA_CONF" -D nl80211 || err "wpa_supplicant не запустился"
     log "wpa_supplicant запущен, ждём подключения..."
 
-    # Ждём ассоциации (до 15 сек)
+    # Ждём ассоциации (до 30 сек — rtl8xxxu может быть медленным)
     attempts=0
-    while [ $attempts -lt 15 ]; do
+    while [ $attempts -lt 30 ]; do
         STATE=$(cat /sys/class/net/wlan0/operstate 2>/dev/null)
         [ "$STATE" = "up" ] && break
         attempts=$((attempts + 1))
@@ -79,14 +79,15 @@ EOF
     done
 
     if [ "$STATE" != "up" ]; then
-        err "Не удалось подключиться к Wi-Fi '$SSID' (таймаут 15 сек)"
+        err "Не удалось подключиться к Wi-Fi '$SSID' (таймаут 30 сек)"
     fi
 
     # DHCP
     udhcpc -i wlan0 -q -t 5 -n 2>/dev/null
     WLAN_IP=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
 
-    # DNS: публичные серверы как upstream для dnsmasq
+    # DNS: прямой resolv.conf + upstream для dnsmasq
+    echo "nameserver 8.8.8.8" > /tmp/resolv.conf
     mkdir -p /tmp/resolv.conf.d
     cat > /tmp/resolv.conf.d/resolv.conf.auto <<DNSEOF
 nameserver 8.8.8.8

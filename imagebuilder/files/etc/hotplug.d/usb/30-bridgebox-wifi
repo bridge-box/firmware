@@ -49,7 +49,7 @@ logger -t bridgebox-wifi "Создан $WLAN на $PHY (hotplug)"
 
 # Если есть wpa-конфиг — подключаемся
 if [ -f "$WPA_CONF" ]; then
-    wpa_supplicant -B -i "$WLAN" -c "$WPA_CONF" 2>/dev/null
+    wpa_supplicant -B -i "$WLAN" -c "$WPA_CONF" -D nl80211 2>/dev/null
     sleep 3
     udhcpc -i "$WLAN" -q -t 5 -n 2>/dev/null
     logger -t bridgebox-wifi "$WLAN подключён к Wi-Fi"
