@@ -1,0 +1,3 @@
+#!/bin/sh
+# Мок dnsmasq
+exit 0

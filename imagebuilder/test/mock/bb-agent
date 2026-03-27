@@ -1,0 +1,22 @@
+#!/bin/sh
+# Мок bb-agent
+case "$1" in
+    register)
+        echo "BB-TEST01" > /etc/bridgebox/box-id
+        echo "unclaimed" > /etc/bridgebox/state
+        echo "registered"
+        ;;
+    heartbeat)
+        echo "heartbeat ok"
+        ;;
+    status)
+        cat /etc/bridgebox/state
+        ;;
+    generate-id)
+        echo "BB-TEST01"
+        ;;
+    ensure-mesh)
+        echo "mesh ok"
+        ;;
+esac
+exit 0

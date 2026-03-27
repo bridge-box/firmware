@@ -1,0 +1,3 @@
+#!/bin/sh
+# Мок logger — пишет в файл для проверки
+echo "[$(date +%H:%M:%S)] $*" >> /tmp/mock-syslog.log

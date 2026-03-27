@@ -1,0 +1,8 @@
+#!/bin/sh
+# Мок hostapd — имитирует AP mode
+RESULT=$(cat /tmp/mock-hostapd-result 2>/dev/null || echo "ok")
+if [ "$RESULT" = "fail" ]; then
+    exit 1
+fi
+echo $$ > /tmp/hostapd.pid
+exit 0

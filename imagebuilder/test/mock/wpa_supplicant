@@ -1,0 +1,21 @@
+#!/bin/sh
+# Мок wpa_supplicant — имитирует подключение к Wi-Fi
+# Управляется через /tmp/mock-wifi-result: "ok" или "fail"
+MOCK_SYS="/mock-sys"
+RESULT=$(cat /tmp/mock-wifi-result 2>/dev/null || echo "ok")
+
+if [ "$RESULT" = "fail" ]; then
+    exit 1
+fi
+
+# Имитируем успешное подключение — ставим operstate=up
+# Находим wlan0 в mock-sys
+if [ -d "$MOCK_SYS/class/net/wlan0" ]; then
+    echo "up" > "$MOCK_SYS/class/net/wlan0/operstate"
+fi
+
+# Имитируем background mode
+if echo "$@" | grep -q "\-B"; then
+    echo $$ > /tmp/wpa_supplicant.pid
+fi
+exit 0

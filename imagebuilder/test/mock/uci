@@ -1,0 +1,52 @@
+#!/bin/sh
+# Мок uci — хранит конфиг в /tmp/uci-mock/
+UCI_DIR="/tmp/uci-mock"
+mkdir -p "$UCI_DIR"
+
+case "$1" in
+    set)
+        key="${2%%=*}"
+        val="${2#*=}"
+        echo "$val" > "$UCI_DIR/$(echo "$key" | tr '.' '_')"
+        ;;
+    get)
+        f="$UCI_DIR/$(echo "$2" | tr '.' '_')"
+        [ -f "$f" ] && cat "$f" || exit 1
+        ;;
+    delete)
+        f="$UCI_DIR/$(echo "$2" | tr '.' '_')"
+        rm -f "$f"
+        ;;
+    show)
+        for f in "$UCI_DIR"/*; do
+            [ -f "$f" ] || continue
+            key=$(basename "$f" | tr '_' '.')
+            val=$(cat "$f")
+            echo "$key=$val"
+        done
+        ;;
+    commit)
+        ;;
+    add_list)
+        key="${2%%=*}"
+        val="${2#*=}"
+        echo "$val" >> "$UCI_DIR/$(echo "$key" | tr '.' '_')"
+        ;;
+    -q)
+        shift
+        # @device[N] — анонимные секции, отдаём максимум 2 потом fail
+        case "$2" in
+            *@device*)
+                COUNT_FILE="/tmp/uci-mock-device-count"
+                COUNT=$(cat "$COUNT_FILE" 2>/dev/null || echo 0)
+                COUNT=$((COUNT + 1))
+                echo "$COUNT" > "$COUNT_FILE"
+                [ "$COUNT" -le 2 ] && exit 0 || exit 1
+                ;;
+        esac
+        "$0" "$@" 2>/dev/null
+        ;;
+    *)
+        ;;
+esac
+exit 0

@@ -1,0 +1,17 @@
+#!/bin/sh
+# Мок tailscale
+case "$1" in
+    status)
+        if [ -f /tmp/mock-tailscale-up ]; then
+            echo '{"BackendState":"Running"}'
+        else
+            echo '{"BackendState":"Stopped"}'
+        fi
+        ;;
+    up)
+        touch /tmp/mock-tailscale-up
+        ;;
+    *)
+        ;;
+esac
+exit 0

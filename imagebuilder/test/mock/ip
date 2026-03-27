@@ -1,0 +1,43 @@
+#!/bin/sh
+# Мок ip — имитирует ip link/addr операции
+MOCK_SYS="/mock-sys"
+
+case "$1" in
+    link)
+        case "$2" in
+            set)
+                # ip link set wlan0 up/down
+                IFACE="$3"
+                [ "$4" = "up" ] && [ -d "$MOCK_SYS/class/net/$IFACE" ] && echo "up" > "$MOCK_SYS/class/net/$IFACE/operstate"
+                [ "$4" = "down" ] && [ -d "$MOCK_SYS/class/net/$IFACE" ] && echo "down" > "$MOCK_SYS/class/net/$IFACE/operstate"
+                ;;
+            show)
+                ;;
+        esac
+        ;;
+    addr)
+        case "$2" in
+            add)
+                # ip addr add X.X.X.X/24 dev wlan0
+                ;;
+            flush)
+                ;;
+            show)
+                # ip -4 addr show wlan0 → выдаём фейковый IP если up
+                IFACE="$3"
+                [ "$2" = "-4" ] && IFACE="$4"
+                STATE=$(cat "$MOCK_SYS/class/net/${IFACE:-wlan0}/operstate" 2>/dev/null)
+                if [ "$STATE" = "up" ]; then
+                    echo "    inet 192.168.1.100/24 scope global $IFACE"
+                fi
+                ;;
+        esac
+        ;;
+    -4)
+        shift
+        "$0" "$@"
+        ;;
+    route)
+        ;;
+esac
+exit 0

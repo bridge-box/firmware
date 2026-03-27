@@ -1,0 +1,62 @@
+#!/bin/sh /etc/rc.common
+# bridgebox-wifi — Wi-Fi state machine
+#
+# При загрузке:
+#   - Есть wpa.conf → подключаемся (STA mode)
+#   - Нет wpa.conf  → поднимаем точку доступа (AP mode)
+#
+# Fallback: если STA не удался → AP mode
+
+START=90
+STOP=10
+
+WPA_CONF="/etc/bridgebox/wpa.conf"
+LOCK="/tmp/bridgebox-wifi-init.lock"
+
+boot() {
+    start
+}
+
+start() {
+    # Защита от одновременного запуска (hotplug может тригернуть параллельно)
+    if [ -f "$LOCK" ]; then
+        logger -t bridgebox-wifi "Уже запущен (lock exists), пропускаем"
+        return 0
+    fi
+    echo $$ > "$LOCK"
+
+    # Ждём появления USB Wi-Fi адаптера (rtl8xxxu грузится асинхронно)
+    local attempt=0
+    while [ $attempt -lt 15 ]; do
+        [ -n "$(ls /sys/class/ieee80211/ 2>/dev/null)" ] && break
+        attempt=$((attempt + 1))
+        sleep 2
+    done
+
+    if [ -z "$(ls /sys/class/ieee80211/ 2>/dev/null)" ]; then
+        logger -t bridgebox-wifi "Wi-Fi адаптер не найден за 30 сек"
+        rm -f "$LOCK"
+        return 1
+    fi
+
+    # Даём драйверу стабилизироваться
+    sleep 3
+
+    if [ -f "$WPA_CONF" ]; then
+        /usr/lib/bridgebox/wifi-switch.sh restore
+    else
+        /usr/lib/bridgebox/wifi-switch.sh ap
+    fi
+
+    rm -f "$LOCK"
+}
+
+stop() {
+    killall hostapd 2>/dev/null || true
+    killall wpa_supplicant 2>/dev/null || true
+    if [ -f /tmp/dnsmasq-bridgebox.pid ]; then
+        kill "$(cat /tmp/dnsmasq-bridgebox.pid)" 2>/dev/null || true
+    fi
+    ip link set wlan0 down 2>/dev/null || true
+    iw dev wlan0 del 2>/dev/null || true
+}

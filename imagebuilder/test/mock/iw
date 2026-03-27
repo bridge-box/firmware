@@ -1,0 +1,31 @@
+#!/bin/sh
+# Мок iw — создаёт фейковый wlan0 в /mock-sys
+MOCK_SYS="/mock-sys"
+
+case "$1" in
+    phy)
+        # iw phy phyX interface add wlan0 type managed/__ap
+        WLAN="$4"
+        MODE="$6"
+        if [ -n "$WLAN" ]; then
+            mkdir -p "$MOCK_SYS/class/net/$WLAN"
+            echo "down" > "$MOCK_SYS/class/net/$WLAN/operstate"
+            # Если STA и wifi-result=ok → up (wpa_supplicant мок подхватит)
+            # Ставим down, wpa_supplicant мок поставит up
+            if [ "$MODE" = "managed" ]; then
+                echo "down" > "$MOCK_SYS/class/net/$WLAN/operstate"
+            fi
+            # AP mode всегда up
+            if [ "$MODE" = "__ap" ]; then
+                echo "up" > "$MOCK_SYS/class/net/$WLAN/operstate"
+            fi
+        fi
+        ;;
+    dev)
+        # iw dev wlan0 del
+        if [ "$3" = "del" ]; then
+            rm -rf "$MOCK_SYS/class/net/$2"
+        fi
+        ;;
+esac
+exit 0
