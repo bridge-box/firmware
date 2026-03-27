@@ -1,9 +1,10 @@
 #!/bin/sh
-# 20-bridgebox-uhttpd — Настройка uhttpd для status page
+# 20-bridgebox-uhttpd — Настройка uhttpd для status page + captive portal
 # Выполняется один раз (uci-defaults).
 
-# Слушаем только на LAN (192.168.77.1), не на всех интерфейсах
-uci set uhttpd.main.listen_http='192.168.77.1:80'
+# Слушаем на 0.0.0.0 — в AP mode юзер подключается к 192.168.77.1,
+# в STA mode статус-страница доступна по IP коробки
+uci set uhttpd.main.listen_http='0.0.0.0:80'
 uci delete uhttpd.main.listen_https 2>/dev/null
 uci set uhttpd.main.home='/www'
 uci set uhttpd.main.cgi_prefix='/cgi-bin'

@@ -1,31 +1,44 @@
 #!/bin/sh /etc/rc.common
 # bridgebox-agent — регистрация устройства при загрузке
-# Генерирует BOX_ID из MAC eth0, регистрируется на backend → статус UNCLAIMED
+#
+# Запускается ПОСЛЕ bridgebox-wifi (START=90).
+# Если Wi-Fi уже в STA mode — регистрируется сразу.
+# Если Wi-Fi в AP mode — регистрация произойдёт после ввода Wi-Fi credentials
+# (вызывается из wifi-setup CGI).
 
 START=99
 
 boot() {
-    # Ждём сеть (Wi-Fi может подниматься дольше)
+    start
+}
+
+start() {
+    # Проверяем Wi-Fi mode
+    local wifi_mode
+    wifi_mode=$(cat /etc/bridgebox/wifi-mode 2>/dev/null || echo "down")
+
+    if [ "$wifi_mode" != "sta" ]; then
+        logger -t bb-agent "Wi-Fi не в STA mode ($wifi_mode), регистрация отложена до настройки Wi-Fi"
+        return 0
+    fi
+
+    # Wi-Fi подключён — ждём IP если нужно
     local attempt=0
-    while [ $attempt -lt 30 ]; do
-        WLAN_STATE=$(cat /sys/class/net/wlan0/operstate 2>/dev/null)
-        [ "$WLAN_STATE" = "up" ] && break
+    local ip=""
+    while [ $attempt -lt 10 ]; do
+        ip=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
+        [ -n "$ip" ] && break
         attempt=$((attempt + 1))
         sleep 2
     done
 
-    if [ "$WLAN_STATE" != "up" ]; then
-        logger -t bb-agent "Wi-Fi не поднялся за 60 сек, регистрация отложена"
+    if [ -z "$ip" ]; then
+        logger -t bb-agent "wlan0 в STA mode, но нет IP — ретрай через heartbeat"
         return 1
     fi
 
-    # DHCP + DNS (если ещё не получен)
-    IP=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
-    if [ -z "$IP" ]; then
-        udhcpc -i wlan0 -q -t 5 -n 2>/dev/null
-    fi
-    echo "nameserver 8.8.8.8" > /tmp/resolv.conf
+    echo "nameserver 8.8.8.8" > /tmp/resolv.conf  # fallback DNS до DHCP
 
-    # Запускаем регистрацию
+    # Регистрация
     /usr/bin/bb-agent register 2>&1 | logger -t bb-agent
 }

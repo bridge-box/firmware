@@ -1,2 +1,14 @@
 <!DOCTYPE html>
-<html><head><meta http-equiv="refresh" content="0;url=/cgi-bin/status"></head></html>
+<html><head>
+<meta charset="utf-8">
+<script>
+// В AP mode (192.168.77.1) — captive portal для Wi-Fi setup
+// В STA mode — статус-страница
+if (location.hostname === '192.168.77.1') {
+    location.replace('/cgi-bin/wifi-setup');
+} else {
+    location.replace('/cgi-bin/status');
+}
+</script>
+<noscript><meta http-equiv="refresh" content="0;url=/cgi-bin/wifi-setup"></noscript>
+</head></html>

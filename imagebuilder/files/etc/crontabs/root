@@ -1,2 +1,5 @@
 # Heartbeat каждые 5 минут — синхронизирует state + проверяет mesh
 */5 * * * * /usr/bin/bb-agent heartbeat 2>&1 | logger -t bb-agent
+
+# Wi-Fi watchdog — если STA отвалился, ретраим или откатываемся в AP
+*/3 * * * * /usr/lib/bridgebox/wifi-watchdog.sh 2>&1 | logger -t bridgebox-wifi

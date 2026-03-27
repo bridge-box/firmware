@@ -34,7 +34,23 @@ COUNT    ?= 10
 # SD-карта для прошивки (автоопределение или задать вручную: SDCARD=/dev/sdX)
 SDCARD ?=
 
-.PHONY: image batch clean docker-build flash help
+.PHONY: image batch clean docker-build flash test qemu-test help
+
+test:
+	@echo "=== L1: Smoke Test ==="
+	@sh scripts/smoke-test.sh
+	@echo ""
+	@echo "=== L2: Integration Test (Docker) ==="
+	@docker build -t bridgewrt-test -f test/Dockerfile . 2>&1 | tail -3
+	@docker run --rm --privileged bridgewrt-test
+
+qemu-test:
+	@echo "=== L3: QEMU Boot Test ==="
+	@echo "Сборка образа armsr/armv8 + запуск в QEMU..."
+	@echo "(первый запуск ~5мин: скачивание Image Builder + сборка)"
+	@echo ""
+	docker build -t bridgewrt-qemu-test -f test/qemu/Dockerfile .
+	docker run --rm --privileged --device /dev/kvm:/dev/kvm bridgewrt-qemu-test
 
 help:
 	@echo "BridgeWRT Image Builder"
@@ -44,6 +60,7 @@ help:
 	@echo "  make image PROFILE=... BOX_ID=BB-001   — собрать один образ"
 	@echo "  make batch PROFILE=... COUNT=10         — собрать пакет образов"
 	@echo "  make flash SDCARD=/dev/sdX              — прошить SD-карту (последний образ)"
+	@echo "  make qemu-test                          — L3: загрузка в QEMU + проверки"
 	@echo "  make clean                              — очистить output/"
 	@echo ""
 	@echo "Профили:"

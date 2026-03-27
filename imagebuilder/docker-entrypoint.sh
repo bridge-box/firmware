@@ -36,7 +36,9 @@ fi
 
 # Базовые пакеты: мост + management (Tailscale, Wi-Fi) + status page (uhttpd)
 # Wi-Fi драйверы: несколько популярных USB чипов для универсальности
-PACKAGES_BASE="tailscale wpa-supplicant uhttpd kmod-rtl8xxxu rtl8188eu-firmware kmod-mt76x0u kmod-ath9k-htc"
+# wpad-basic-mbedtls = hostapd (AP mode) + wpa_supplicant (STA mode) в одном пакете
+# dnsmasq нужен для DHCP + DNS hijack в AP mode (captive portal)
+PACKAGES_BASE="tailscale wpad-basic-mbedtls -wpa-supplicant uhttpd dnsmasq kmod-rtl8xxxu rtl8188eu-firmware kmod-mt76x0u kmod-ath9k-htc"
 
 if [ "$VARIANT" = "vanilla" ]; then
     # Эталон: чистая OpenWrt, идентичная скачанной с openwrt.org

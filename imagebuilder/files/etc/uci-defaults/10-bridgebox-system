@@ -50,8 +50,14 @@ uci commit dhcp
 
 # --- Состояние ---
 echo 'setup' > /etc/bridgebox/state
+echo 'down' > /etc/bridgebox/wifi-mode
 
-# --- Автозапуск агента ---
+# --- dnsmasq оставляем включённым ---
+# Нужен для: DHCP на LAN (setup), DNS hijack в AP mode, резолв hostname
+# В bridge mode setup-bridge.sh НЕ отключает его (нужен для Wi-Fi AP)
+
+# --- Автозапуск сервисов ---
+/etc/init.d/bridgebox-wifi enable 2>/dev/null || true
 /etc/init.d/bridgebox-agent enable 2>/dev/null || true
 
 exit 0

@@ -3,14 +3,12 @@
 #
 # Превращает NanoPi R2S/R3S в прозрачный мост между eth0 (WAN) и eth1 (LAN).
 # Коробка пропускает весь трафик на L2, для сети невидима.
-# Management IP получает по DHCP на br0.
+#
+# Management — ТОЛЬКО через Wi-Fi (wlan0) → Tailscale mesh.
+# br0 без IP (proto=none) — полностью стерильный мост.
+# Wi-Fi (bridgebox-wifi) НЕ затрагивается этим скриптом.
 #
 # Скрипт идемпотентный — безопасно запускать повторно.
-# Работает на чистой OpenWrt 25.12 с дефолтной конфигурацией.
-#
-# ВНИМАНИЕ: после применения SSH-сессия оборвётся.
-# Переподключаться по IP, который коробка получит по DHCP
-# (смотреть в роутере или nmap -sn <подсеть>).
 #
 # Использование: sh setup-bridge.sh
 # Rollback:      firstboot && reboot
@@ -29,13 +27,13 @@ fi
 
 echo "=== BridgeBox: настройка прозрачного моста ==="
 echo ""
-echo "ВНИМАНИЕ: SSH-сессия оборвётся после применения!"
-echo "Переподключайтесь по новому IP (DHCP от вышестоящего роутера)."
+echo "Bridge: eth0 + eth1 (L2, без IP)"
+echo "Management: wlan0 → Tailscale (не затрагивается)"
 echo ""
 
 # --- Шаг 1: Очистка существующих интерфейсов ---
 
-echo "[1/6] Очистка существующих интерфейсов..."
+echo "[1/7] Очистка существующих интерфейсов..."
 
 # Удаляем именованные интерфейсы (wan, wan6, lan и т.д.)
 for iface in wan wan6 lan lan6; do
@@ -53,7 +51,7 @@ fi
 
 # --- Шаг 2: Очистка device-секций ---
 
-echo "[2/6] Очистка device-секций..."
+echo "[2/7] Очистка device-секций..."
 
 # Удаляем именованную секцию br0 (если скрипт запускается повторно)
 if uci -q get network.br0 >/dev/null 2>&1; then
@@ -71,7 +69,7 @@ done
 
 # --- Шаг 3: Создание bridge device ---
 
-echo "[3/6] Создание bridge device br0 (eth0 + eth1)..."
+echo "[3/7] Создание bridge device br0 (eth0 + eth1)..."
 
 uci set network.br0=device
 uci set network.br0.name='br0'
@@ -81,24 +79,17 @@ uci add_list network.br0.ports='eth1'
 # STP выключен — мост между двумя портами, петель нет
 uci set network.br0.stp='0'
 
-# --- Шаг 4: Создание интерфейса bridge с DHCP (management) ---
+# --- Шаг 4: Создание интерфейса bridge БЕЗ IP (стерильный мост) ---
 
-echo "[4/6] Создание интерфейса bridge (DHCP для management)..."
+echo "[4/7] Создание интерфейса bridge (proto=none, без IP)..."
 
 uci set network.bridge=interface
 uci set network.bridge.device='br0'
-uci set network.bridge.proto='dhcp'
+uci set network.bridge.proto='none'
 
 # --- Шаг 5: Отключение ненужных служб ---
 
-echo "[5/6] Отключение ненужных служб..."
-
-# dnsmasq — коробка не раздаёт DNS/DHCP, всё транзитом через мост
-if [ -f /etc/init.d/dnsmasq ]; then
-    /etc/init.d/dnsmasq stop 2>/dev/null || true
-    /etc/init.d/dnsmasq disable 2>/dev/null || true
-    echo "  dnsmasq: остановлен и отключён"
-fi
+echo "[5/7] Отключение ненужных служб..."
 
 # firewall — трафик идёт транзитом на L2, файрвол не нужен
 if [ -f /etc/init.d/firewall ]; then
@@ -114,12 +105,15 @@ if [ -f /etc/init.d/odhcpd ]; then
     echo "  odhcpd: остановлен и отключён"
 fi
 
+# НЕ трогаем dnsmasq — он нужен для Wi-Fi AP mode (captive portal)
+echo "  dnsmasq: не трогаем (используется Wi-Fi AP mode)"
+
 # Очистка nftables (файрвол мог оставить правила)
 nft flush ruleset 2>/dev/null || true
 
 # --- Шаг 6: Применение ---
 
-echo "[6/6] Применение конфигурации..."
+echo "[6/7] Применение конфигурации..."
 
 uci commit network
 
@@ -132,16 +126,12 @@ echo "Итоговая конфигурация:"
 uci show network | grep -v '^network.loopback' | grep -v '^network.globals'
 echo ""
 
-# --- Шаг 7: Выход из setup mode, включение сервисов ---
+# --- Шаг 7: Включение сервисов ---
 
 echo "[7/7] Активация боевого режима..."
 
-# Удаляем маркер setup mode
-rm -f /etc/bridgebox/setup-mode
-echo "  Setup mode: выключен"
-
 # Включаем bridgebox-сервисы
-for svc in bridgebox-management bridgebox-watchdog bridgebox-wifi-client; do
+for svc in bridgebox-wifi bridgebox-agent bridgebox-watchdog; do
     if [ -f "/etc/init.d/$svc" ]; then
         /etc/init.d/$svc enable
         echo "  $svc: включён"
@@ -150,20 +140,19 @@ done
 
 echo ""
 echo "Перезагрузка сети..."
-echo "SSH-сессия сейчас оборвётся."
 echo ""
 echo "После перезагрузки:"
-echo "  1. Подключите eth0 к провайдеру/роутеру, eth1 к домашнему роутеру"
-echo "  2. Найдите новый IP коробки в DHCP-таблице роутера"
-echo "  3. Или: nmap -sn <подсеть вашего роутера>"
-echo "  4. SSH root@<новый_IP>"
+echo "  - Мост: eth0 ↔ eth1 (прозрачный, без IP)"
+echo "  - Management: wlan0 → Tailscale"
+echo "  - Статус: http://192.168.77.1/ (через Wi-Fi AP)"
 echo ""
 echo "Проверки:"
 echo "  bridge link              — eth0 и eth1 в br0"
-echo "  ip addr show br0         — management IP"
+echo "  ip addr show wlan0       — management IP (Wi-Fi)"
+echo "  wifi-switch.sh status    — режим Wi-Fi (ap/sta)"
 echo ""
 echo "Rollback: firstboot && reboot"
 echo ""
 
-# Перезагрузка сети
+# Перезагрузка сети (только ethernet, Wi-Fi не затрагивается)
 /etc/init.d/network restart

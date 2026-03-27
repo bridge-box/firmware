@@ -92,9 +92,9 @@ check_bridge() {
 # --- Восстановление wlan0 ---
 
 recover_wlan() {
-    logger -t bridgebox-wd "MGMT: попытка восстановить $WLAN"
+    logger -t bridgebox-wd "MGMT: попытка восстановить $WLAN через wifi-switch.sh"
 
-    # Перезагрузка драйвера
+    # Перезагрузка драйвера (может помочь при зависании USB)
     rmmod rtl8xxxu 2>/dev/null
     rmmod mt76x0u 2>/dev/null
     rmmod ath9k_htc 2>/dev/null
@@ -104,20 +104,8 @@ recover_wlan() {
     modprobe ath9k_htc 2>/dev/null
     sleep 3
 
-    # Поднимаем интерфейс
-    PHY=$(ls /sys/class/ieee80211/ 2>/dev/null | tail -1)
-    if [ -n "$PHY" ] && [ ! -d "/sys/class/net/$WLAN" ]; then
-        iw phy "$PHY" interface add "$WLAN" type managed 2>/dev/null
-    fi
-
-    # wpa_supplicant
-    if [ -f /etc/bridgebox/wpa.conf ]; then
-        killall wpa_supplicant 2>/dev/null
-        sleep 1
-        wpa_supplicant -B -i "$WLAN" -c /etc/bridgebox/wpa.conf 2>/dev/null
-        sleep 3
-        udhcpc -i "$WLAN" -q 2>/dev/null
-    fi
+    # Делегируем wifi-switch.sh — он сам решит AP или STA
+    /usr/lib/bridgebox/wifi-switch.sh restore
 }
 
 # --- Safe mode ---
@@ -160,6 +148,12 @@ mgmt_ok=0
 ts_ok=0
 bridge_ok=0
 
+# Проверяем наличие Wi-Fi адаптера вообще
+wifi_hw_present=0
+if [ -n "$(ls /sys/class/ieee80211/ 2>/dev/null)" ]; then
+    wifi_hw_present=1
+fi
+
 check_mgmt && mgmt_ok=1
 check_tailscale && ts_ok=1
 check_bridge && bridge_ok=1
@@ -180,8 +174,17 @@ if [ "$mgmt_ok" = "1" ]; then
         # mgmt жив, bridge мёртв — НЕ ребутим, логируем
         logger -t bridgebox-wd "DATA: bridge down, mgmt OK — ждём оператора"
     fi
+elif [ "$wifi_hw_present" = "0" ]; then
+    # Wi-Fi адаптер отсутствует физически — НЕ ребутим, бесполезно
+    # Логируем один раз в 10 минут (каждый 20-й вызов при 30с интервале)
+    mgmt_fails=$(cat "$MGMT_FAIL_FILE" 2>/dev/null || echo "0")
+    mgmt_fails=$((mgmt_fails + 1))
+    echo "$mgmt_fails" > "$MGMT_FAIL_FILE"
+    if [ "$((mgmt_fails % 20))" = "1" ]; then
+        logger -t bridgebox-wd "MGMT: Wi-Fi адаптер не найден, ребут не поможет — ждём"
+    fi
 else
-    # mgmt мёртв — пробуем восстановить
+    # Wi-Fi адаптер есть, но mgmt мёртв — пробуем восстановить
     mgmt_fails=$(cat "$MGMT_FAIL_FILE" 2>/dev/null || echo "0")
     mgmt_fails=$((mgmt_fails + 1))
     echo "$mgmt_fails" > "$MGMT_FAIL_FILE"
