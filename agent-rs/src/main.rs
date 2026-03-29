@@ -1,6 +1,8 @@
 mod api;
 mod device;
 mod models;
+mod events;
+mod overlay;
 
 use std::process::ExitCode;
 
@@ -13,8 +15,9 @@ fn main() -> ExitCode {
         "status" => cmd_status(),
         "generate-id" => cmd_generate_id(),
         "ensure-mesh" => cmd_ensure_mesh(),
+        "sync-overlay" => cmd_sync_overlay(),
         _ => {
-            eprintln!("bb-agent <register|heartbeat|status|generate-id|ensure-mesh>");
+            eprintln!("bb-agent <register|heartbeat|status|generate-id|ensure-mesh|sync-overlay>");
             return ExitCode::FAILURE;
         }
     };
@@ -78,9 +81,22 @@ fn cmd_heartbeat() -> Result<(), String> {
     let bridge_up = device::is_interface_up("br0");
     let tailscale_connected = device::is_tailscale_up();
     let uptime = device::read_uptime();
+    let overlay_version = device::read_overlay_version();
+    let overlay_status = device::read_overlay_status();
+    let overlay_service_running = device::is_overlay_service_running();
 
-    let resp = api::heartbeat(&backend_url, &box_id, uptime, wlan_connected, bridge_up, tailscale_connected)?;
+    let resp = api::heartbeat(
+        &backend_url, &box_id, uptime,
+        wlan_connected, bridge_up, tailscale_connected,
+        overlay_version, overlay_status, overlay_service_running,
+    )?;
+
     device::write_state(&resp.state)?;
+
+    // Sync overlay если есть расхождение
+    if let Err(e) = overlay::sync(&backend_url, &box_id, resp.desired_overlay.clone()) {
+        eprintln!("[bb-agent] overlay sync: {e}");
+    }
 
     println!("{}", serde_json::to_string(&resp).unwrap_or_default());
     Ok(())
@@ -116,4 +132,22 @@ fn cmd_ensure_mesh() -> Result<(), String> {
         .ok_or("backend не вернул auth key")?;
 
     device::tailscale_up(&auth_key)
+}
+
+/// Sync overlay вручную — для отладки.
+/// Читает desired-overlay.json и применяет/откатывает.
+fn cmd_sync_overlay() -> Result<(), String> {
+    let box_id = device::read_box_id()?;
+    let backend_url = device::read_backend_url();
+
+    let desired = match std::fs::read_to_string("/etc/bridgebox/desired-overlay.json") {
+        Ok(json) => serde_json::from_str(&json)
+            .map_err(|e| format!("ошибка парсинга desired-overlay.json: {e}"))?,
+        Err(_) => {
+            println!("desired-overlay.json не найден — ничего не делаем");
+            return Ok(());
+        }
+    };
+
+    overlay::sync(&backend_url, &box_id, desired)
 }

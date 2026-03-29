@@ -2,12 +2,16 @@ use std::fs;
 use std::path::Path;
 
 use crate::models::DeviceState;
+use crate::models::OverlayStatus;
 
 const BOX_ID_FILE: &str = "/etc/bridgebox/box-id";
 const STATE_FILE: &str = "/etc/bridgebox/state";
 const BACKEND_URL_FILE: &str = "/etc/bridgebox/backend-url";
 const MAC_PATH: &str = "/sys/class/net/eth0/address";
 const DEFAULT_BACKEND_URL: &str = "http://backend.bridge-box.online";
+const OVERLAY_VERSION_FILE: &str = "/etc/bridgebox/overlay-version";
+const OVERLAY_STATUS_FILE: &str = "/etc/bridgebox/overlay-status";
+const DESIRED_OVERLAY_FILE: &str = "/etc/bridgebox/desired-overlay.json";
 
 /// Читает BOX_ID из файла. Ошибка если файл не существует или пуст.
 pub fn read_box_id() -> Result<String, String> {
@@ -124,3 +128,60 @@ pub fn read_uptime() -> u64 {
         .unwrap_or(0)
 }
 
+/// Читает текущую версию overlay (или None если не установлен).
+pub fn read_overlay_version() -> Option<String> {
+    fs::read_to_string(OVERLAY_VERSION_FILE)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Читает текущий статус overlay.
+pub fn read_overlay_status() -> OverlayStatus {
+    fs::read_to_string(OVERLAY_STATUS_FILE)
+        .ok()
+        .map(|s| OverlayStatus::from_str(&s))
+        .unwrap_or(OverlayStatus::None)
+}
+
+/// Записывает desired-overlay.json (ответ бэкенда).
+pub fn write_desired_overlay(json: &str) -> Result<(), String> {
+    let dir = Path::new(DESIRED_OVERLAY_FILE).parent().unwrap();
+    fs::create_dir_all(dir)
+        .map_err(|e| format!("не удалось создать {}: {e}", dir.display()))?;
+    fs::write(DESIRED_OVERLAY_FILE, json)
+        .map_err(|e| format!("не удалось записать {DESIRED_OVERLAY_FILE}: {e}"))
+}
+
+/// Записывает overlay-status атомарно.
+pub fn write_overlay_status(status: &OverlayStatus) -> Result<(), String> {
+    let dir = Path::new(OVERLAY_STATUS_FILE).parent().unwrap();
+    fs::create_dir_all(dir)
+        .map_err(|e| format!("не удалось создать {}: {e}", dir.display()))?;
+    let tmp = format!("{OVERLAY_STATUS_FILE}.tmp");
+    fs::write(&tmp, format!("{status}\n"))
+        .map_err(|e| format!("не удалось записать {tmp}: {e}"))?;
+    fs::rename(&tmp, OVERLAY_STATUS_FILE)
+        .map_err(|e| format!("не удалось переименовать {tmp}: {e}"))
+}
+
+/// Проверяет, работает ли overlay-сервис.
+/// Overlay при установке создаёт /etc/bridgebox/overlay-service с именем init.d сервиса.
+/// Если файла нет — overlay не установлен.
+pub fn is_overlay_service_running() -> bool {
+    let service_name = match std::fs::read_to_string("/etc/bridgebox/overlay-service") {
+        Ok(s) => s.trim().to_string(),
+        Err(_) => return false, // overlay не установлен
+    };
+
+    if service_name.is_empty() {
+        return false;
+    }
+
+    let init_script = format!("/etc/init.d/{service_name}");
+    std::process::Command::new("sh")
+        .args(["-c", &format!("[ -f {init_script} ] && {init_script} status >/dev/null 2>&1")])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}

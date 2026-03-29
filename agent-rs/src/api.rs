@@ -44,7 +44,7 @@ pub fn request_auth_key(base_url: &str, device_id: &str) -> Result<RegisterRespo
         .map_err(|e| format!("auth-key: ошибка парсинга ответа: {e}"))
 }
 
-/// POST /api/devices/{id}/heartbeat
+/// POST /api/devices/{id}/heartbeat — расширенный, с overlay полями
 pub fn heartbeat(
     base_url: &str,
     device_id: &str,
@@ -52,6 +52,9 @@ pub fn heartbeat(
     wlan_connected: bool,
     bridge_up: bool,
     tailscale_connected: bool,
+    overlay_version: Option<String>,
+    overlay_status: crate::models::OverlayStatus,
+    overlay_service_running: bool,
 ) -> Result<HeartbeatResponse, String> {
     let url = format!("{base_url}/api/devices/{device_id}/heartbeat");
     let body = HeartbeatRequest {
@@ -60,6 +63,9 @@ pub fn heartbeat(
         wlan_connected,
         bridge_up,
         tailscale_connected,
+        overlay_version,
+        overlay_status,
+        overlay_service_running,
     };
 
     let mut resp = ureq::post(&url)
