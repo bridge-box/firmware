@@ -45,6 +45,7 @@ pub struct HeartbeatRequest {
     pub uptime: u64,
     pub wlan_connected: bool,
     pub bridge_up: bool,
+    pub tailscale_connected: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

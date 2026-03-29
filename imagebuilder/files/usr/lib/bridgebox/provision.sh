@@ -206,6 +206,20 @@ if ! bb-agent register; then
     err "bb-agent register завершился с ошибкой"
 fi
 
+# Mesh — подключаемся к Tailscale сразу
+log "Подключение к mesh-сети..."
+if bb-agent ensure-mesh; then
+    log "Mesh: подключён"
+else
+    log "ВНИМАНИЕ: mesh не подключился (Headscale недоступен?). Heartbeat подхватит позже."
+fi
+
+# Проверяем Tailscale — оператор должен видеть статус
+if command -v tailscale >/dev/null 2>&1; then
+    TS_STATUS=$(tailscale status --json 2>/dev/null | grep -o '"BackendState":"[^"]*"' | cut -d'"' -f4)
+    log "Tailscale: $TS_STATUS"
+fi
+
 # bb-agent register сам генерит ID, регистрирует и переводит в UNCLAIMED
 BOX_ID=$(cat "$BOX_ID_FILE" 2>/dev/null)
 log "=== Provisioning завершён ==="

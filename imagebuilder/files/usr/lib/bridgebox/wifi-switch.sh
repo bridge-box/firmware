@@ -19,6 +19,9 @@ STATE_FILE="/etc/bridgebox/wifi-mode"
 # Fallback DNS — используется до получения DNS от DHCP
 FALLBACK_DNS="8.8.8.8"
 
+# --- Общие утилиты ---
+. /usr/lib/bridgebox/lib-common.sh
+
 # --- Логгирование ---
 
 log() {
@@ -84,7 +87,7 @@ start_ap() {
     PHY=$(find_phy)
     if [ -z "$PHY" ]; then
         log "ОШИБКА: Wi-Fi адаптер не найден"
-        echo "down" > "$STATE_FILE"
+        safe_write "$STATE_FILE" "down"
         return 1
     fi
 
@@ -92,7 +95,7 @@ start_ap() {
     iw phy "$PHY" interface add "$WLAN" type __ap
     if [ $? -ne 0 ]; then
         log "ОШИБКА: не удалось создать $WLAN в AP mode на $PHY"
-        echo "down" > "$STATE_FILE"
+        safe_write "$STATE_FILE" "down"
         return 1
     fi
 
@@ -120,7 +123,7 @@ HAPD
     if [ $? -ne 0 ]; then
         log "ОШИБКА: hostapd не запустился"
         wifi_cleanup
-        echo "down" > "$STATE_FILE"
+        safe_write "$STATE_FILE" "down"
         return 1
     fi
 
@@ -138,7 +141,7 @@ DNS
         log "ПРЕДУПРЕЖДЕНИЕ: dnsmasq не запустился, DHCP/DNS hijack не работает"
     fi
 
-    echo "ap" > "$STATE_FILE"
+    safe_write "$STATE_FILE" "ap"
     log "AP mode: SSID='${ssid}', IP=${AP_IP}, DHCP=${AP_NET}.100-250"
     return 0
 }
@@ -243,7 +246,7 @@ WPA
 
     local ip
     ip=$(ip -4 addr show "$WLAN" 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
-    echo "sta" > "$STATE_FILE"
+    safe_write "$STATE_FILE" "sta"
     log "STA mode: подключён к '${ssid}', IP=${ip}"
     return 0
 }
@@ -264,7 +267,7 @@ restore_sta() {
     PHY=$(find_phy)
     if [ -z "$PHY" ]; then
         log "ОШИБКА: Wi-Fi адаптер не найден"
-        echo "down" > "$STATE_FILE"
+        safe_write "$STATE_FILE" "down"
         return 1
     fi
 
@@ -309,7 +312,7 @@ restore_sta() {
 
     local ip
     ip=$(ip -4 addr show "$WLAN" 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
-    echo "sta" > "$STATE_FILE"
+    safe_write "$STATE_FILE" "sta"
     log "STA восстановлен, IP=${ip}"
     return 0
 }

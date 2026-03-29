@@ -254,31 +254,102 @@ setup_mock() {
     echo "TEMPLATE" > "$MOCK_ROOT/etc/bridgebox/box-id"
 }
 
-# Тест: watchdog.sh НЕ ребутит без Wi-Fi адаптера
+# Тест: lib-common.sh существует и содержит safe_write
+LIB_COMMON="$FILES_DIR/usr/lib/bridgebox/lib-common.sh"
+if [ -f "$LIB_COMMON" ]; then
+    if grep -q "safe_write" "$LIB_COMMON"; then
+        pass "lib-common.sh содержит safe_write()"
+    else
+        fail "lib-common.sh НЕ содержит safe_write()"
+    fi
+    if [ -x "$LIB_COMMON" ]; then
+        pass "lib-common.sh executable"
+    else
+        fail "lib-common.sh НЕ executable"
+    fi
+else
+    fail "lib-common.sh не существует"
+fi
+
+# Тест: все state-записи используют safe_write (не echo > )
+for f in "$FILES_DIR/usr/lib/bridgebox/wifi-switch.sh" "$FILES_DIR/etc/uci-defaults/10-bridgebox-system"; do
+    [ -f "$f" ] || continue
+    basename_f=$(basename "$f")
+    unsafe=$(grep -n 'echo.*> .*/etc/bridgebox/' "$f" 2>/dev/null | grep -v '^.*:#')
+    if [ -z "$unsafe" ]; then
+        pass "$basename_f — safe_write для state файлов"
+    else
+        fail "$basename_f — найдены unsafe echo > /etc/bridgebox/ записи"
+    fi
+done
+
+# Тест: factory-reset.sh существует и содержит firstboot
+FR_SCRIPT="$FILES_DIR/usr/lib/bridgebox/factory-reset.sh"
+if [ -f "$FR_SCRIPT" ]; then
+    if grep -q "firstboot" "$FR_SCRIPT"; then
+        pass "factory-reset.sh содержит firstboot"
+    else
+        fail "factory-reset.sh НЕ содержит firstboot"
+    fi
+else
+    fail "factory-reset.sh не существует"
+fi
+
+# Тест: factory-reset CGI существует
+FR_CGI="$FILES_DIR/www/cgi-bin/factory-reset"
+if [ -f "$FR_CGI" ] && [ -x "$FR_CGI" ]; then
+    pass "cgi-bin/factory-reset существует и executable"
+else
+    fail "cgi-bin/factory-reset не существует или не executable"
+fi
+
+# Тест: status page содержит кнопку factory-reset
+STATUS_CGI="$FILES_DIR/www/cgi-bin/status"
+if [ -f "$STATUS_CGI" ]; then
+    if grep -q "factory-reset" "$STATUS_CGI"; then
+        pass "status page содержит ссылку на factory-reset"
+    else
+        fail "status page НЕ содержит ссылку на factory-reset"
+    fi
+fi
+
+# Тест: 10-bridgebox-system содержит wait loop для eth0
+UCI_DEFAULTS_FILE="$FILES_DIR/etc/uci-defaults/10-bridgebox-system"
+if [ -f "$UCI_DEFAULTS_FILE" ]; then
+    if grep -q 'while.*attempts.*lt.*10' "$UCI_DEFAULTS_FILE" && grep -q '00:00:00:00:00:00' "$UCI_DEFAULTS_FILE"; then
+        pass "uci-defaults: wait loop для eth0 MAC"
+    else
+        fail "uci-defaults: нет wait loop для eth0 MAC"
+    fi
+fi
+
+# Тест: bridgebox-wifi поднимает аварийный eth1 при отсутствии Wi-Fi
+WIFI_INIT_FILE="$FILES_DIR/etc/init.d/bridgebox-wifi"
+if [ -f "$WIFI_INIT_FILE" ]; then
+    if grep -q "192.168.77.1.*eth1\|eth1.*192.168.77.1" "$WIFI_INIT_FILE"; then
+        pass "bridgebox-wifi: аварийный management на eth1"
+    else
+        fail "bridgebox-wifi: НЕТ аварийного management на eth1"
+    fi
+fi
+
+# Тест: watchdog.sh НИКОГДА не ребутит (мост работает 24/7)
 setup_mock
-# Нет phy в ieee80211 = нет адаптера
-# Подменяем пути в watchdog.sh и проверяем что reboot НЕ вызывается
 WATCHDOG="$FILES_DIR/usr/lib/bridgebox/watchdog.sh"
 if [ -f "$WATCHDOG" ]; then
-    # Проверяем что есть проверка wifi_hw_present
-    if grep -q "wifi_hw_present" "$WATCHDOG"; then
-        pass "watchdog.sh проверяет наличие Wi-Fi адаптера перед reboot"
+    # watchdog не должен содержать reboot (кроме комментариев)
+    reboot_calls=$(grep -n "reboot" "$WATCHDOG" 2>/dev/null | grep -v "^.*:#" | grep -v "echo\|logger")
+    if [ -z "$reboot_calls" ]; then
+        pass "watchdog.sh не содержит reboot (мост работает 24/7)"
     else
-        fail "watchdog.sh НЕ проверяет наличие Wi-Fi адаптера — будет ребутить вслепую!"
+        fail "watchdog.sh содержит reboot — мост должен работать 24/7, без ребутов!"
     fi
 
-    # Проверяем что reboot только в ветке wifi_hw_present=1
-    # Считаем reboot-ы вне блока wifi_hw_present
-    reboot_outside=$(awk '
-        /wifi_hw_present.*=.*0|No Wi-Fi/ { in_no_wifi=1 }
-        /wifi_hw_present.*=.*1|else/ { in_no_wifi=0 }
-        /reboot/ && !/#/ && !in_no_wifi { print NR": "$0 }
-    ' "$WATCHDOG" 2>/dev/null)
-
-    if [ -n "$reboot_outside" ]; then
-        pass "watchdog.sh: reboot только при наличии Wi-Fi адаптера"
+    # Проверяем что есть проверка wifi_hw_present
+    if grep -q "wifi_hw_present" "$WATCHDOG"; then
+        pass "watchdog.sh проверяет наличие Wi-Fi адаптера"
     else
-        pass "watchdog.sh: reboot-логика корректна"
+        fail "watchdog.sh НЕ проверяет наличие Wi-Fi адаптера"
     fi
 fi
 

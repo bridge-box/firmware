@@ -35,6 +35,12 @@ start() {
 
     if [ -z "$(ls /sys/class/ieee80211/ 2>/dev/null)" ]; then
         logger -t bridgebox-wifi "Wi-Fi адаптер не найден за 30 сек"
+        # Аварийный management на eth1 (LAN) — чтобы коробка не стала глухонемой
+        logger -t bridgebox-wifi "Аварийный доступ через eth1 (192.168.77.1)"
+        ip addr add 192.168.77.1/24 dev eth1 2>/dev/null || true
+        ip link set eth1 up 2>/dev/null || true
+        . /usr/lib/bridgebox/lib-common.sh
+        safe_write /etc/bridgebox/wifi-mode "down"
         rm -f "$LOCK"
         return 1
     fi

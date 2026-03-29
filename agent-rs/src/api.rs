@@ -51,6 +51,7 @@ pub fn heartbeat(
     uptime: u64,
     wlan_connected: bool,
     bridge_up: bool,
+    tailscale_connected: bool,
 ) -> Result<HeartbeatResponse, String> {
     let url = format!("{base_url}/api/devices/{device_id}/heartbeat");
     let body = HeartbeatRequest {
@@ -58,6 +59,7 @@ pub fn heartbeat(
         uptime,
         wlan_connected,
         bridge_up,
+        tailscale_connected,
     };
 
     let mut resp = ureq::post(&url)

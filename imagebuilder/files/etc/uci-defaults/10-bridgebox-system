@@ -4,6 +4,30 @@
 
 BRIDGEWRT_VERSION="0.1.0"
 
+# --- Общие утилиты ---
+. /usr/lib/bridgebox/lib-common.sh
+
+# --- BOX_ID (генерация из MAC eth0 при первой загрузке) ---
+BOX_ID_FILE="/etc/bridgebox/box-id"
+EXISTING_ID=$(cat "$BOX_ID_FILE" 2>/dev/null)
+if [ -z "$EXISTING_ID" ] || [ "$EXISTING_ID" = "TEMPLATE" ]; then
+    # Ждём eth0 (до 10 сек — для rockchip/R3S драйвер грузится асинхронно)
+    MAC=""
+    attempts=0
+    while [ $attempts -lt 10 ]; do
+        MAC=$(cat /sys/class/net/eth0/address 2>/dev/null)
+        [ -n "$MAC" ] && [ "$MAC" != "00:00:00:00:00:00" ] && break
+        MAC=""
+        attempts=$((attempts + 1))
+        sleep 1
+    done
+    if [ -n "$MAC" ]; then
+        BOX_ID="BB-$(echo -n "$MAC" | sha256sum | cut -c1-6 | tr 'a-f' 'A-F')"
+        mkdir -p /etc/bridgebox
+        safe_write "$BOX_ID_FILE" "$BOX_ID"
+    fi
+fi
+
 # --- Branding ---
 cat > /etc/banner <<'BANNER'
 ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
@@ -49,8 +73,8 @@ uci set dhcp.lan.leasetime='12h'
 uci commit dhcp
 
 # --- Состояние ---
-echo 'setup' > /etc/bridgebox/state
-echo 'down' > /etc/bridgebox/wifi-mode
+safe_write /etc/bridgebox/state 'setup'
+safe_write /etc/bridgebox/wifi-mode 'down'
 
 # --- dnsmasq оставляем включённым ---
 # Нужен для: DHCP на LAN (setup), DNS hijack в AP mode, резолв hostname

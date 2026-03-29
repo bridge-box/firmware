@@ -1,4 +1,3 @@
-use sha2::{Sha256, Digest};
 use std::fs;
 use std::path::Path;
 
@@ -21,37 +20,6 @@ pub fn read_box_id() -> Result<String, String> {
     Ok(id)
 }
 
-/// Читает или генерирует BOX_ID.
-/// Если файл уже содержит валидный ID — возвращает его.
-/// Иначе генерирует из MAC eth0 и сохраняет.
-pub fn ensure_box_id() -> Result<String, String> {
-    if let Ok(id) = read_box_id() {
-        return Ok(id);
-    }
-
-    let mac = read_mac_eth0()?;
-    let box_id = generate_id_from_mac(&mac);
-
-    // Создаём директорию если не существует
-    let dir = Path::new(BOX_ID_FILE).parent().unwrap();
-    fs::create_dir_all(dir)
-        .map_err(|e| format!("не удалось создать {}: {e}", dir.display()))?;
-
-    fs::write(BOX_ID_FILE, &box_id)
-        .map_err(|e| format!("не удалось записать {BOX_ID_FILE}: {e}"))?;
-
-    eprintln!("[bb-agent] Сгенерирован BOX_ID: {box_id}");
-    Ok(box_id)
-}
-
-/// Генерирует BB-XXXXXX из SHA256(mac).
-fn generate_id_from_mac(mac: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(mac.as_bytes());
-    let hash = hasher.finalize();
-    let hex_str = hex::encode_upper(&hash[..3]); // 3 байта = 6 hex символов
-    format!("BB-{hex_str}")
-}
 
 /// Читает MAC-адрес eth0.
 pub fn read_mac_eth0() -> Result<String, String> {
@@ -81,14 +49,17 @@ pub fn read_backend_url() -> String {
         .unwrap_or_else(|| DEFAULT_BACKEND_URL.to_string())
 }
 
-/// Записывает текущее состояние в файл.
+/// Записывает текущее состояние в файл (атомарно: write .tmp + rename).
 pub fn write_state(state: &DeviceState) -> Result<(), String> {
     let dir = Path::new(STATE_FILE).parent().unwrap();
     fs::create_dir_all(dir)
         .map_err(|e| format!("не удалось создать {}: {e}", dir.display()))?;
 
-    fs::write(STATE_FILE, format!("{}\n", state))
-        .map_err(|e| format!("не удалось записать {STATE_FILE}: {e}"))
+    let tmp = format!("{}.tmp", STATE_FILE);
+    fs::write(&tmp, format!("{}\n", state))
+        .map_err(|e| format!("не удалось записать {tmp}: {e}"))?;
+    fs::rename(&tmp, STATE_FILE)
+        .map_err(|e| format!("не удалось переименовать {tmp} -> {STATE_FILE}: {e}"))
 }
 
 const HEADSCALE_URL: &str = "https://hs.bridge-box.online";
@@ -153,23 +124,3 @@ pub fn read_uptime() -> u64 {
         .unwrap_or(0)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_generate_id_deterministic() {
-        let id1 = generate_id_from_mac("aa:bb:cc:dd:ee:ff");
-        let id2 = generate_id_from_mac("aa:bb:cc:dd:ee:ff");
-        assert_eq!(id1, id2);
-        assert!(id1.starts_with("BB-"));
-        assert_eq!(id1.len(), 9); // BB- + 6 hex
-    }
-
-    #[test]
-    fn test_generate_id_different_macs() {
-        let id1 = generate_id_from_mac("aa:bb:cc:dd:ee:ff");
-        let id2 = generate_id_from_mac("11:22:33:44:55:66");
-        assert_ne!(id1, id2);
-    }
-}

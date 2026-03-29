@@ -41,4 +41,7 @@ start() {
 
     # Регистрация
     /usr/bin/bb-agent register 2>&1 | logger -t bb-agent
+
+    # Mesh — поднимаем сразу после регистрации (не ждём heartbeat через 5 мин)
+    /usr/bin/bb-agent ensure-mesh 2>&1 | logger -t bb-agent
 }

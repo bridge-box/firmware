@@ -29,7 +29,7 @@ fn main() -> ExitCode {
 }
 
 fn cmd_register() -> Result<(), String> {
-    let box_id = device::ensure_box_id()?;
+    let box_id = device::read_box_id()?;
     let mac = device::read_mac_eth0()?;
     let backend_url = device::read_backend_url();
 
@@ -76,9 +76,10 @@ fn cmd_heartbeat() -> Result<(), String> {
 
     let wlan_connected = device::is_interface_up("wlan0");
     let bridge_up = device::is_interface_up("br0");
+    let tailscale_connected = device::is_tailscale_up();
     let uptime = device::read_uptime();
 
-    let resp = api::heartbeat(&backend_url, &box_id, uptime, wlan_connected, bridge_up)?;
+    let resp = api::heartbeat(&backend_url, &box_id, uptime, wlan_connected, bridge_up, tailscale_connected)?;
     device::write_state(&resp.state)?;
 
     println!("{}", serde_json::to_string(&resp).unwrap_or_default());
@@ -95,7 +96,7 @@ fn cmd_status() -> Result<(), String> {
 }
 
 fn cmd_generate_id() -> Result<(), String> {
-    let box_id = device::ensure_box_id()?;
+    let box_id = device::read_box_id()?;
     println!("{box_id}");
     Ok(())
 }

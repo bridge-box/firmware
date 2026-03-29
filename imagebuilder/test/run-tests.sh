@@ -274,15 +274,15 @@ else
 fi
 
 # ============================================================
-# Сценарий 8: watchdog с Wi-Fi адаптером, wlan0 down, 3 фейла → reboot
+# Сценарий 8: watchdog с Wi-Fi адаптером, wlan0 down, много фейлов → НЕ ребутит
 # ============================================================
 
-section "Сценарий 8: Watchdog — mgmt мёртв 3 раза"
+section "Сценарий 8: Watchdog — mgmt мёртв, НЕ ребутит"
 
 setup
 mock_wifi_present
 mock_wifi_connect_fail
-echo "2" > /tmp/bridgebox-wd-mgmt-fails
+echo "10" > /tmp/bridgebox-wd-mgmt-fails
 
 # Подменяем reboot на запись в файл
 echo '#!/bin/sh
@@ -291,10 +291,10 @@ chmod +x /usr/sbin/reboot
 
 sh /usr/lib/bridgebox/watchdog.sh 2>/dev/null
 
-if [ -f /tmp/mock-reboot-called ]; then
-    pass "Watchdog ребутит после 3 неудач (с Wi-Fi адаптером)"
+if [ ! -f /tmp/mock-reboot-called ]; then
+    pass "Watchdog НЕ ребутит даже после 10 фейлов (мост работает)"
 else
-    fail "Watchdog НЕ ребутил после 3 неудач"
+    fail "Watchdog РЕБУТИЛ — это запрещено, мост должен работать 24/7"
 fi
 
 # Убираем мок reboot

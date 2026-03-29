@@ -4,11 +4,9 @@
 # Management plane (wlan0 + Tailscale) — приоритет, неприкасаемый.
 # Data plane (br0) — мост, может ломаться, чиним удалённо.
 #
-# Логика:
-#   - Если mgmt жив, а bridge мёртв → НЕ ребутим, оператор починит через mesh
-#   - Если mgmt мёртв → пробуем восстановить wlan0
-#   - После N полных отказов → reboot
-#   - После N неудачных загрузок → safe mode (только mgmt, без bridge)
+# Принцип: мост работает 24/7, НИКОГДА не ребутим.
+# Если что-то сломалось — пробуем восстановить, логируем для оператора.
+# Мост (data plane) продолжает работать даже если mgmt мёртв.
 #
 # Запускается через init.d/bridgebox-watchdog каждые 60 секунд.
 
@@ -17,15 +15,6 @@ WLAN="wlan0"
 
 # Счётчики (tmpfs — сбрасываются при reboot)
 MGMT_FAIL_FILE="/tmp/bridgebox-wd-mgmt-fails"
-BRIDGE_FAIL_FILE="/tmp/bridgebox-wd-bridge-fails"
-MAX_FAILS=3
-
-# Счётчик неудачных загрузок (persistent — переживает reboot)
-BOOT_FAIL_FILE="/etc/bridgebox/boot-failures"
-MAX_BOOT_FAILS=3
-
-# Safe mode: если файл существует — поднимаем только mgmt
-SAFE_MODE_FILE="/etc/bridgebox/safe-mode"
 
 # --- Проверки ---
 
@@ -108,41 +97,7 @@ recover_wlan() {
     /usr/lib/bridgebox/wifi-switch.sh restore
 }
 
-# --- Safe mode ---
-
-is_safe_mode() {
-    [ -f "$SAFE_MODE_FILE" ]
-}
-
-check_boot_failures() {
-    boots=$(cat "$BOOT_FAIL_FILE" 2>/dev/null || echo "0")
-    if [ "$boots" -ge "$MAX_BOOT_FAILS" ]; then
-        if ! is_safe_mode; then
-            logger -t bridgebox-wd "SAFE MODE: $boots неудачных загрузок, включаем safe mode"
-            touch "$SAFE_MODE_FILE"
-        fi
-    fi
-}
-
-# Вызывается при успешной загрузке (mgmt UP)
-clear_boot_failures() {
-    echo "0" > "$BOOT_FAIL_FILE" 2>/dev/null
-    if is_safe_mode; then
-        logger -t bridgebox-wd "SAFE MODE: mgmt восстановлен, выходим из safe mode"
-        rm -f "$SAFE_MODE_FILE"
-    fi
-}
-
-increment_boot_failures() {
-    boots=$(cat "$BOOT_FAIL_FILE" 2>/dev/null || echo "0")
-    boots=$((boots + 1))
-    echo "$boots" > "$BOOT_FAIL_FILE" 2>/dev/null
-}
-
 # --- Основная логика ---
-
-# Проверяем safe mode при старте
-check_boot_failures
 
 mgmt_ok=0
 ts_ok=0
@@ -162,26 +117,25 @@ check_bridge && bridge_ok=1
 if [ "$mgmt_ok" = "1" ]; then
     # mgmt жив — сбрасываем счётчики
     echo "0" > "$MGMT_FAIL_FILE"
-    clear_boot_failures
 
     if [ "$ts_ok" = "0" ]; then
-        # wlan0 жив, но Tailscale упал — перезапускаем
-        logger -t bridgebox-wd "MGMT: wlan0 OK, Tailscale down — перезапуск"
-        /etc/init.d/tailscale restart 2>/dev/null
+        # wlan0 жив, но Tailscale упал — ensure-mesh (запросит auth key если не залогинен)
+        logger -t bridgebox-wd "MGMT: wlan0 OK, Tailscale down — ensure-mesh"
+        /usr/bin/bb-agent ensure-mesh 2>&1 | logger -t bridgebox-wd
     fi
 
     if [ "$bridge_ok" = "0" ]; then
-        # mgmt жив, bridge мёртв — НЕ ребутим, логируем
+        # mgmt жив, bridge мёртв — логируем, оператор починит через mesh
         logger -t bridgebox-wd "DATA: bridge down, mgmt OK — ждём оператора"
     fi
 elif [ "$wifi_hw_present" = "0" ]; then
-    # Wi-Fi адаптер отсутствует физически — НЕ ребутим, бесполезно
+    # Wi-Fi адаптер отсутствует физически — бесполезно что-то делать
     # Логируем один раз в 10 минут (каждый 20-й вызов при 30с интервале)
     mgmt_fails=$(cat "$MGMT_FAIL_FILE" 2>/dev/null || echo "0")
     mgmt_fails=$((mgmt_fails + 1))
     echo "$mgmt_fails" > "$MGMT_FAIL_FILE"
     if [ "$((mgmt_fails % 20))" = "1" ]; then
-        logger -t bridgebox-wd "MGMT: Wi-Fi адаптер не найден, ребут не поможет — ждём"
+        logger -t bridgebox-wd "MGMT: Wi-Fi адаптер не найден — мост работает, mgmt недоступен"
     fi
 else
     # Wi-Fi адаптер есть, но mgmt мёртв — пробуем восстановить
@@ -189,13 +143,13 @@ else
     mgmt_fails=$((mgmt_fails + 1))
     echo "$mgmt_fails" > "$MGMT_FAIL_FILE"
 
-    if [ "$mgmt_fails" -le 2 ]; then
-        # Первые попытки — восстановить wlan0
+    # Каждые 3 цикла пробуем восстановить wlan0 (не чаще раза в 90 сек)
+    if [ "$((mgmt_fails % 3))" = "1" ]; then
         recover_wlan
-    elif [ "$mgmt_fails" -ge "$MAX_FAILS" ]; then
-        # Всё мертво — reboot
-        logger -t bridgebox-wd "FULL FAIL: mgmt мёртв $mgmt_fails раз — reboot"
-        increment_boot_failures
-        reboot
+    fi
+
+    # Логируем раз в 10 минут
+    if [ "$((mgmt_fails % 20))" = "1" ]; then
+        logger -t bridgebox-wd "MGMT: wlan0 мёртв $mgmt_fails циклов — продолжаем попытки восстановления"
     fi
 fi

@@ -111,11 +111,8 @@ check_warn "BOX_ID" \
 check_warn "Состояние" \
     sh -c 'state=$(cat /etc/bridgebox/state 2>/dev/null); [ -n "$state" ] && echo "$state" || { echo "не задано"; false; }'
 
-check_warn "Safe mode" \
-    sh -c '[ -f /etc/bridgebox/safe-mode ] && { echo "АКТИВЕН"; false; } || echo "нет"'
-
-check_warn "Boot failures" \
-    sh -c 'n=$(cat /etc/bridgebox/boot-failures 2>/dev/null || echo "0"); echo "$n"; [ "$n" -lt 3 ] || false'
+check_warn "Mesh (Tailscale)" \
+    sh -c 'ts=$(tailscale status --json 2>/dev/null | grep -o "\"BackendState\":\"[^\"]*\"" | cut -d"\"" -f4); [ "$ts" = "Running" ] && echo "подключён" || { echo "${ts:-не запущен}"; false; }'
 
 echo ""
 

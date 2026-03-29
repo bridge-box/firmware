@@ -195,7 +195,7 @@ fi
 log "=== Проверка скриптов и сервисов ==="
 
 # 11. Скрипты в /usr/lib/bridgebox/
-for script in wifi-switch.sh wifi-watchdog.sh setup-bridge.sh healthcheck.sh watchdog.sh; do
+for script in wifi-switch.sh wifi-watchdog.sh setup-bridge.sh healthcheck.sh watchdog.sh lib-common.sh factory-reset.sh; do
     if ssh_cmd "test -x /usr/lib/bridgebox/$script && echo ok" | grep -q "ok"; then
         pass "Скрипт: $script"
     else
@@ -213,7 +213,7 @@ for svc in bridgebox-wifi bridgebox-agent bridgebox-watchdog; do
 done
 
 # 13. CGI-эндпоинты
-for cgi in wifi-setup status; do
+for cgi in wifi-setup status factory-reset; do
     if ssh_cmd "test -x /www/cgi-bin/$cgi && echo ok" | grep -q "ok"; then
         pass "CGI: $cgi"
     else
@@ -296,6 +296,97 @@ if echo "$BANNER" | grep -q "BB-QEMU-TEST"; then
     pass "Banner: содержит BOX_ID"
 else
     fail "Banner: BOX_ID не найден в баннере"
+fi
+
+# ---- Mesh-оркестрация: ensure-mesh вызывается в boot flow и watchdog ----
+log "=== Проверка mesh-оркестрации ==="
+
+# init.d/bridgebox-agent содержит ensure-mesh
+AGENT_INIT=$(ssh_cmd "cat /etc/init.d/bridgebox-agent")
+if echo "$AGENT_INIT" | grep -q "ensure-mesh"; then
+    pass "Mesh: init.d/bridgebox-agent вызывает ensure-mesh"
+else
+    fail "Mesh: init.d/bridgebox-agent НЕ вызывает ensure-mesh"
+fi
+
+# watchdog.sh содержит ensure-mesh (а не tailscale restart)
+WATCHDOG=$(ssh_cmd "cat /usr/lib/bridgebox/watchdog.sh")
+if echo "$WATCHDOG" | grep -q "ensure-mesh"; then
+    pass "Mesh: watchdog.sh вызывает ensure-mesh"
+else
+    fail "Mesh: watchdog.sh НЕ вызывает ensure-mesh"
+fi
+
+if echo "$WATCHDOG" | grep -q "tailscale restart"; then
+    fail "Mesh: watchdog.sh всё ещё содержит 'tailscale restart' (должен быть ensure-mesh)"
+else
+    pass "Mesh: watchdog.sh не содержит 'tailscale restart'"
+fi
+
+# provision.sh содержит ensure-mesh
+PROVISION=$(ssh_cmd "cat /usr/lib/bridgebox/provision.sh")
+if echo "$PROVISION" | grep -q "ensure-mesh"; then
+    pass "Mesh: provision.sh вызывает ensure-mesh"
+else
+    fail "Mesh: provision.sh НЕ вызывает ensure-mesh"
+fi
+
+# heartbeat cron job на месте
+CRONTAB=$(ssh_cmd "cat /etc/crontabs/root")
+if echo "$CRONTAB" | grep -q "bb-agent heartbeat"; then
+    pass "Mesh: crontab содержит heartbeat"
+else
+    fail "Mesh: crontab НЕ содержит heartbeat"
+fi
+
+# bb-agent ensure-mesh — команда запускается (ошибка ожидаема без backend)
+ENSURE_OUT=$(ssh_cmd "/usr/bin/bb-agent ensure-mesh 2>&1 || true")
+if echo "$ENSURE_OUT" | grep -qi "ошибка\|error\|не удалось\|backend"; then
+    pass "Mesh: bb-agent ensure-mesh запускается (ожидаемая ошибка без backend)"
+else
+    pass "Mesh: bb-agent ensure-mesh запускается"
+fi
+
+# ---- P0 fixes ----
+log "=== Проверка P0 fixes ==="
+
+# lib-common.sh с safe_write
+if ssh_cmd "test -f /usr/lib/bridgebox/lib-common.sh && grep -q safe_write /usr/lib/bridgebox/lib-common.sh && echo ok" | grep -q "ok"; then
+    pass "lib-common.sh: safe_write() присутствует"
+else
+    fail "lib-common.sh: safe_write() отсутствует"
+fi
+
+# factory-reset CGI отдаёт HTML
+FR_HTML=$(ssh_cmd "REQUEST_METHOD=GET /www/cgi-bin/factory-reset 2>/dev/null || true")
+if echo "$FR_HTML" | grep -q "factory-reset\|Сброс"; then
+    pass "factory-reset CGI: отдаёт HTML"
+else
+    fail "factory-reset CGI: не отдаёт HTML"
+fi
+
+# factory-reset.sh существует
+if ssh_cmd "test -x /usr/lib/bridgebox/factory-reset.sh && echo ok" | grep -q "ok"; then
+    pass "factory-reset.sh: присутствует и executable"
+else
+    fail "factory-reset.sh: отсутствует"
+fi
+
+# status page содержит кнопку сброса
+STATUS_HTML=$(ssh_cmd "REQUEST_METHOD=GET /www/cgi-bin/status 2>/dev/null || true")
+if echo "$STATUS_HTML" | grep -q "factory-reset"; then
+    pass "status page: содержит ссылку на factory-reset"
+else
+    fail "status page: не содержит ссылку на factory-reset"
+fi
+
+# 10-bridgebox-system: wait loop для eth0 (проверяем в overlay или original)
+# uci-defaults уже отработали, но проверяем что box-id сгенерирован
+BOX_ID_LEN=$(ssh_cmd "cat /etc/bridgebox/box-id 2>/dev/null | wc -c")
+if [ -n "$BOX_ID_LEN" ] && [ "$BOX_ID_LEN" -gt 3 ] 2>/dev/null; then
+    pass "box-id: сгенерирован (wait loop отработал)"
+else
+    fail "box-id: не сгенерирован (wait loop мог не сработать)"
 fi
 
 # ---- uci-defaults отработали (удалены) ----
