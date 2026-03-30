@@ -1,0 +1,92 @@
+#!/bin/sh
+# api-status — JSON статус коробки
+# GET /cgi-bin/api-status
+
+. /usr/lib/bridgebox/lib-api.sh 2>/dev/null
+require_get
+
+# --- Сбор данных ---
+
+DEVICE_ID=$(cat /etc/bridgebox/box-id 2>/dev/null || echo "unknown")
+STATE=$(cat /etc/bridgebox/state 2>/dev/null || echo "unknown")
+UPTIME=$(cut -d. -f1 /proc/uptime 2>/dev/null || echo "0")
+
+# Wi-Fi
+WLAN_OPER=$(cat /sys/class/net/wlan0/operstate 2>/dev/null || echo "down")
+WLAN_CONNECTED="false"
+[ "$WLAN_OPER" = "up" ] && WLAN_CONNECTED="true"
+
+WLAN_SSID=""
+WLAN_SIGNAL=""
+if [ "$WLAN_CONNECTED" = "true" ]; then
+    if command -v iwinfo >/dev/null 2>&1; then
+        WLAN_SSID=$(iwinfo wlan0 info 2>/dev/null | grep 'ESSID:' | sed 's/.*ESSID: "\(.*\)".*/\1/')
+        WLAN_SIGNAL=$(iwinfo wlan0 info 2>/dev/null | grep 'Signal:' | grep -o '\-[0-9]*' | head -1)
+    fi
+fi
+WLAN_SSID=$(json_escape "${WLAN_SSID:-}")
+[ -z "$WLAN_SIGNAL" ] && WLAN_SIGNAL="null" || WLAN_SIGNAL="$WLAN_SIGNAL"
+
+# Bridge
+BR0_OPER=$(cat /sys/class/net/br0/operstate 2>/dev/null || echo "down")
+BR0_UP="false"
+[ "$BR0_OPER" = "up" ] && BR0_UP="true"
+ETH0_LINK="false"
+[ "$(cat /sys/class/net/eth0/carrier 2>/dev/null)" = "1" ] && ETH0_LINK="true"
+ETH1_LINK="false"
+[ "$(cat /sys/class/net/eth1/carrier 2>/dev/null)" = "1" ] && ETH1_LINK="true"
+
+# Tailscale
+TS_CONNECTED="false"
+TS_IP="null"
+ts_ip=$(ip -4 addr show tailscale0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
+if [ -n "$ts_ip" ]; then
+    TS_CONNECTED="true"
+    TS_IP="\"$ts_ip\""
+fi
+
+# Overlay
+OV_VERSION=$(cat /etc/bridgebox/overlay-version 2>/dev/null)
+OV_STATUS=$(cat /etc/bridgebox/overlay-status 2>/dev/null || echo "none")
+OV_SERVICE_NAME=$(cat /etc/bridgebox/overlay-service 2>/dev/null)
+OV_SERVICE_RUNNING="false"
+if [ -n "$OV_SERVICE_NAME" ] && [ -f "/etc/init.d/$OV_SERVICE_NAME" ]; then
+    /etc/init.d/"$OV_SERVICE_NAME" status >/dev/null 2>&1 && OV_SERVICE_RUNNING="true"
+fi
+[ -z "$OV_VERSION" ] && OV_VERSION_JSON="null" || OV_VERSION_JSON="\"$OV_VERSION\""
+
+# SOCKS
+SOCKS_RUNNING="false"
+pgrep -x microsocks >/dev/null 2>&1 && SOCKS_RUNNING="true"
+SOCKS_PORT=1080
+
+# --- JSON ответ ---
+
+json_response "{
+  \"deviceId\": \"$DEVICE_ID\",
+  \"state\": \"$STATE\",
+  \"uptime\": $UPTIME,
+  \"wlan\": {
+    \"connected\": $WLAN_CONNECTED,
+    \"ssid\": \"$WLAN_SSID\",
+    \"signal\": $WLAN_SIGNAL
+  },
+  \"bridge\": {
+    \"up\": $BR0_UP,
+    \"eth0Link\": $ETH0_LINK,
+    \"eth1Link\": $ETH1_LINK
+  },
+  \"tailscale\": {
+    \"connected\": $TS_CONNECTED,
+    \"ip\": $TS_IP
+  },
+  \"overlay\": {
+    \"version\": $OV_VERSION_JSON,
+    \"status\": \"$OV_STATUS\",
+    \"serviceRunning\": $OV_SERVICE_RUNNING
+  },
+  \"socks\": {
+    \"running\": $SOCKS_RUNNING,
+    \"port\": $SOCKS_PORT
+  }
+}"

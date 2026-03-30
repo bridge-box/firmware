@@ -1,0 +1,11 @@
+#!/bin/sh
+# api-reboot — Перезагрузка коробки
+# POST /cgi-bin/api-reboot
+
+. /usr/lib/bridgebox/lib-api.sh 2>/dev/null
+require_post
+
+# Задержка чтобы HTTP response успел уйти
+( sleep 2 && reboot ) &
+
+json_response '{"ok": true, "message": "rebooting in 2s"}'

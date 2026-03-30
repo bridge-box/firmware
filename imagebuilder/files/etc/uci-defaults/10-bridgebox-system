@@ -83,5 +83,6 @@ safe_write /etc/bridgebox/wifi-mode 'down'
 # --- Автозапуск сервисов ---
 /etc/init.d/bridgebox-wifi enable 2>/dev/null || true
 /etc/init.d/bridgebox-agent enable 2>/dev/null || true
+/etc/init.d/bridgebox-socks enable 2>/dev/null || true
 
 exit 0

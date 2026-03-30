@@ -1,0 +1,27 @@
+#!/bin/sh
+# api-bridge-setup — Включить bridge mode
+# POST /cgi-bin/api-bridge-setup
+
+. /usr/lib/bridgebox/lib-api.sh 2>/dev/null
+require_post
+
+# Проверяем: bridge уже активен?
+br0_state=$(cat /sys/class/net/br0/operstate 2>/dev/null || echo "down")
+if [ "$br0_state" = "up" ]; then
+    json_response '{"ok": false, "error": "bridge already up"}'
+    exit 0
+fi
+
+# Проверяем: setup-bridge.sh существует?
+SETUP_SCRIPT="/usr/lib/bridgebox/setup-bridge.sh"
+if [ ! -f "$SETUP_SCRIPT" ]; then
+    json_response '{"ok": false, "error": "setup-bridge.sh not found"}'
+    exit 0
+fi
+
+# Запускаем в фоне — CGI-ответ уйдёт до того как сеть перестроится
+# После bridge setup LAN IP (192.168.77.1) пропадёт,
+# дальнейшая связь только через mesh (tailscale0)
+( sleep 1 && sh "$SETUP_SCRIPT" 2>&1 | logger -t api-bridge-setup ) &
+
+json_response '{"ok": true, "message": "bridge setup started"}'

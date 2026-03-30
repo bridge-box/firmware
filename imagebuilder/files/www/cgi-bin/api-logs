@@ -1,0 +1,35 @@
+#!/bin/sh
+# api-logs — Логи коробки (text/plain)
+# GET /cgi-bin/api-logs?service=system|agent|overlay
+
+. /usr/lib/bridgebox/lib-api.sh 2>/dev/null
+require_get
+
+service=$(query_param "service")
+[ -z "$service" ] && service="system"
+
+echo "Content-Type: text/plain; charset=utf-8"
+echo ""
+
+case "$service" in
+    system)
+        logread | tail -200
+        ;;
+    agent)
+        logread | grep bb-agent | tail -200
+        ;;
+    overlay)
+        # Фильтруем по имени overlay-сервиса из конфига
+        service_name=$(cat /etc/bridgebox/overlay-service 2>/dev/null)
+        if [ -n "$service_name" ]; then
+            logread | grep "$service_name" | tail -200
+        else
+            echo "# overlay не установлен"
+        fi
+        ;;
+    *)
+        echo "# неизвестный сервис: $service"
+        echo "# доступные: system, agent, overlay"
+        logread | tail -200
+        ;;
+esac
