@@ -77,6 +77,13 @@ pub struct DesiredOverlay {
     pub sha256: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventConfig {
+    pub window_seconds: u32,
+    pub rst_threshold: u32,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HeartbeatRequest {
@@ -95,6 +102,7 @@ pub struct HeartbeatRequest {
 pub struct HeartbeatResponse {
     pub state: DeviceState,
     pub desired_overlay: Option<DesiredOverlay>,
+    pub event_config: Option<EventConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -166,6 +174,30 @@ mod tests {
         let resp: HeartbeatResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.state, DeviceState::Unclaimed);
         assert!(resp.desired_overlay.is_none());
+    }
+
+    #[test]
+    fn heartbeat_response_with_event_config() {
+        let json = r#"{
+            "state": "CLAIMED",
+            "desiredOverlay": null,
+            "eventConfig": {
+                "windowSeconds": 30,
+                "rstThreshold": 3
+            }
+        }"#;
+        let resp: HeartbeatResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.state, DeviceState::Claimed);
+        let config = resp.event_config.unwrap();
+        assert_eq!(config.window_seconds, 30);
+        assert_eq!(config.rst_threshold, 3);
+    }
+
+    #[test]
+    fn heartbeat_response_without_event_config() {
+        let json = r#"{"state": "UNCLAIMED", "desiredOverlay": null}"#;
+        let resp: HeartbeatResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.event_config.is_none());
     }
 
     #[test]

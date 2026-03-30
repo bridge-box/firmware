@@ -36,6 +36,21 @@ pub fn new_event(event: &str, version: Option<&str>, details: &str) -> DeviceEve
     }
 }
 
+/// Отправить произвольное событие с JSON data.
+/// Формат: {"deviceId": "...", "type": "...", "timestamp": "...", "data": {...}}
+pub fn send_raw_event(base_url: &str, device_id: &str, event_json: &str) {
+    // Syslog
+    let _ = std::process::Command::new("logger")
+        .args(["-t", "bb-agent", &format!("event: {event_json}")])
+        .output();
+
+    // Fire-and-forget на бэкенд
+    let url = format!("{base_url}/api/devices/{device_id}/events");
+    let _ = ureq::post(&url)
+        .header("Content-Type", "application/json")
+        .send(event_json.as_bytes());
+}
+
 fn current_timestamp() -> String {
     std::fs::read_to_string("/proc/uptime")
         .ok()

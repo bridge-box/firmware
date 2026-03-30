@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::models::DeviceState;
+use crate::models::EventConfig;
 use crate::models::OverlayStatus;
 
 const BOX_ID_FILE: &str = "/etc/bridgebox/box-id";
@@ -163,6 +164,24 @@ pub fn write_overlay_status(status: &OverlayStatus) -> Result<(), String> {
         .map_err(|e| format!("не удалось записать {tmp}: {e}"))?;
     fs::rename(&tmp, OVERLAY_STATUS_FILE)
         .map_err(|e| format!("не удалось переименовать {tmp}: {e}"))
+}
+
+/// Атомарная запись файла: write .tmp + rename.
+fn safe_write(path: &str, content: &str) -> Result<(), String> {
+    let tmp = format!("{path}.tmp");
+    std::fs::write(&tmp, content).map_err(|e| format!("write {tmp}: {e}"))?;
+    std::fs::rename(&tmp, path).map_err(|e| format!("rename {tmp} → {path}: {e}"))
+}
+
+const EVENT_CONFIG_FILE: &str = "/etc/bridgebox/event-config";
+
+/// Сохранить конфигурацию событий на диск для overlay-монитора
+pub fn write_event_config(config: &EventConfig) -> Result<(), String> {
+    let dir = std::path::Path::new(EVENT_CONFIG_FILE).parent().unwrap();
+    fs::create_dir_all(dir)
+        .map_err(|e| format!("не удалось создать {}: {e}", dir.display()))?;
+    let content = format!("{} {}", config.window_seconds, config.rst_threshold);
+    safe_write(EVENT_CONFIG_FILE, &content)
 }
 
 /// Проверяет, работает ли overlay-сервис.

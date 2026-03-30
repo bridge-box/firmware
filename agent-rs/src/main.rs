@@ -16,8 +16,9 @@ fn main() -> ExitCode {
         "generate-id" => cmd_generate_id(),
         "ensure-mesh" => cmd_ensure_mesh(),
         "sync-overlay" => cmd_sync_overlay(),
+        "send-event" => cmd_send_event(),
         _ => {
-            eprintln!("bb-agent <register|heartbeat|status|generate-id|ensure-mesh|sync-overlay>");
+            eprintln!("bb-agent <register|heartbeat|status|generate-id|ensure-mesh|sync-overlay|send-event>");
             return ExitCode::FAILURE;
         }
     };
@@ -93,6 +94,13 @@ fn cmd_heartbeat() -> Result<(), String> {
 
     device::write_state(&resp.state)?;
 
+    // Сохранить конфигурацию событий для overlay-монитора
+    if let Some(ref config) = resp.event_config {
+        if let Err(e) = device::write_event_config(config) {
+            eprintln!("[bb-agent] event config write: {e}");
+        }
+    }
+
     // Sync overlay если есть расхождение
     if let Err(e) = overlay::sync(&backend_url, &box_id, resp.desired_overlay.clone()) {
         eprintln!("[bb-agent] overlay sync: {e}");
@@ -132,6 +140,24 @@ fn cmd_ensure_mesh() -> Result<(), String> {
         .ok_or("backend не вернул auth key")?;
 
     device::tailscale_up(&auth_key)
+}
+
+/// Принимает JSON event из stdin, отправляет на backend.
+/// Используется overlay-скриптами для отправки событий.
+fn cmd_send_event() -> Result<(), String> {
+    let box_id = device::read_box_id()?;
+    let backend_url = device::read_backend_url();
+
+    let mut json = String::new();
+    std::io::Read::read_to_string(&mut std::io::stdin(), &mut json)
+        .map_err(|e| format!("stdin read: {e}"))?;
+
+    if json.trim().is_empty() {
+        return Err("пустой JSON на stdin".to_string());
+    }
+
+    events::send_raw_event(&backend_url, &box_id, json.trim());
+    Ok(())
 }
 
 /// Sync overlay вручную — для отладки.
