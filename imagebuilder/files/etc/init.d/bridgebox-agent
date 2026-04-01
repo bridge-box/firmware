@@ -18,22 +18,28 @@ start() {
     wifi_mode=$(cat /etc/bridgebox/wifi-mode 2>/dev/null || echo "down")
 
     if [ "$wifi_mode" != "sta" ]; then
-        logger -t bb-agent "Wi-Fi не в STA mode ($wifi_mode), регистрация отложена до настройки Wi-Fi"
+        logger -t bb-agent "Management не готов ($wifi_mode), регистрация отложена"
         return 0
     fi
 
-    # Wi-Fi подключён — ждём IP если нужно
+    # Management интерфейс
+    local mgmt_iface="wlan0"
+    if [ -f /etc/bridgebox/mgmt-iface ]; then
+        mgmt_iface=$(cat /etc/bridgebox/mgmt-iface)
+    fi
+
+    # Ждём IP на management интерфейсе
     local attempt=0
     local ip=""
     while [ $attempt -lt 10 ]; do
-        ip=$(ip -4 addr show wlan0 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
+        ip=$(ip -4 addr show "$mgmt_iface" 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
         [ -n "$ip" ] && break
         attempt=$((attempt + 1))
         sleep 2
     done
 
     if [ -z "$ip" ]; then
-        logger -t bb-agent "wlan0 в STA mode, но нет IP — ретрай через heartbeat"
+        logger -t bb-agent "$mgmt_iface без IP — ретрай через heartbeat"
         return 1
     fi
 

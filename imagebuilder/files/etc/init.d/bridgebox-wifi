@@ -13,6 +13,9 @@ STOP=10
 WPA_CONF="/etc/bridgebox/wpa.conf"
 LOCK="/tmp/bridgebox-wifi-init.lock"
 
+# Management интерфейс: wlan0 на реальном железе, eth2 в sandbox
+MGMT_IFACE_FILE="/etc/bridgebox/mgmt-iface"
+
 boot() {
     start
 }
@@ -35,7 +38,38 @@ start() {
 
     if [ -z "$(ls /sys/class/ieee80211/ 2>/dev/null)" ]; then
         logger -t bridgebox-wifi "Wi-Fi адаптер не найден за 30 сек"
-        # Аварийный management на eth1 (LAN) — чтобы коробка не стала глухонемой
+
+        if [ -f "$MGMT_IFACE_FILE" ]; then
+            # Sandbox: management через ethernet (eth2)
+            local mgmt_iface
+            mgmt_iface=$(cat "$MGMT_IFACE_FILE")
+            logger -t bridgebox-wifi "Sandbox mode: management через $mgmt_iface (DHCP)"
+            # DHCP на mgmt интерфейсе уже настроен через uci (99-sandbox)
+            # Ждём получения IP
+            local ip_attempt=0
+            local mgmt_ip=""
+            while [ $ip_attempt -lt 15 ]; do
+                mgmt_ip=$(ip -4 addr show "$mgmt_iface" 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)
+                [ -n "$mgmt_ip" ] && break
+                ip_attempt=$((ip_attempt + 1))
+                sleep 2
+            done
+            if [ -n "$mgmt_ip" ]; then
+                logger -t bridgebox-wifi "Sandbox: $mgmt_iface IP=$mgmt_ip"
+                . /usr/lib/bridgebox/lib-common.sh
+                safe_write /etc/bridgebox/wifi-mode "sta"
+                rm -f "$LOCK"
+                return 0
+            else
+                logger -t bridgebox-wifi "Sandbox: $mgmt_iface без IP за 30 сек"
+                . /usr/lib/bridgebox/lib-common.sh
+                safe_write /etc/bridgebox/wifi-mode "down"
+                rm -f "$LOCK"
+                return 1
+            fi
+        fi
+
+        # Реальное железо: аварийный management на eth1
         logger -t bridgebox-wifi "Аварийный доступ через eth1 (192.168.77.1)"
         ip addr add 192.168.77.1/24 dev eth1 2>/dev/null || true
         ip link set eth1 up 2>/dev/null || true

@@ -25,7 +25,11 @@ start_service() {
     # Получаем IP адреса
     local ts_ip wlan_ip
     ts_ip=$(get_iface_ip tailscale0)
-    wlan_ip=$(get_iface_ip wlan0)
+    local mgmt_iface="wlan0"
+    if [ -f /etc/bridgebox/mgmt-iface ]; then
+        mgmt_iface=$(cat /etc/bridgebox/mgmt-iface)
+    fi
+    wlan_ip=$(get_iface_ip "$mgmt_iface")
 
     if [ -z "$ts_ip" ]; then
         logger -t bridgebox-socks "tailscale0 без IP, не запускаем"
@@ -33,7 +37,7 @@ start_service() {
     fi
 
     if [ -z "$wlan_ip" ]; then
-        logger -t bridgebox-socks "wlan0 без IP, не запускаем"
+        logger -t bridgebox-socks "$mgmt_iface без IP, не запускаем"
         return 0
     fi
 

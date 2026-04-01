@@ -13,7 +13,11 @@ MAX_FAILS=3
 [ "$WIFI_MODE" = "sta" ] || exit 0
 
 # Проверяем operstate
-WLAN_STATE=$(cat /sys/class/net/wlan0/operstate 2>/dev/null || echo "down")
+MGMT_IFACE="wlan0"
+if [ -f /etc/bridgebox/mgmt-iface ]; then
+    MGMT_IFACE=$(cat /etc/bridgebox/mgmt-iface)
+fi
+WLAN_STATE=$(cat /sys/class/net/$MGMT_IFACE/operstate 2>/dev/null || echo "down")
 
 if [ "$WLAN_STATE" = "up" ]; then
     # Всё ок, сбрасываем счётчик

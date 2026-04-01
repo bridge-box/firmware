@@ -123,6 +123,7 @@ flash:
 	echo ""; \
 	echo "=== Готово. Вставляй SD в коробку. ==="
 
+
 clean:
 	@echo "Очистка output/..."
 	@rm -rf "$(OUTPUT_DIR)"

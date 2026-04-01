@@ -12,6 +12,10 @@
 
 BRIDGE="br0"
 WLAN="wlan0"
+# Sandbox: management через ethernet вместо wlan0
+if [ -f /etc/bridgebox/mgmt-iface ]; then
+    WLAN=$(cat /etc/bridgebox/mgmt-iface)
+fi
 
 # Счётчики (tmpfs — сбрасываются при reboot)
 MGMT_FAIL_FILE="/tmp/bridgebox-wd-mgmt-fails"
@@ -81,6 +85,13 @@ check_bridge() {
 # --- Восстановление wlan0 ---
 
 recover_wlan() {
+    # В sandbox (ethernet mgmt) — не пытаемся перезагружать Wi-Fi драйверы
+    if [ -f /etc/bridgebox/mgmt-iface ]; then
+        logger -t bridgebox-wd "MGMT: sandbox mode, перезапуск DHCP на $WLAN"
+        udhcpc -i "$WLAN" -q -t 5 -n 2>/dev/null || true
+        return
+    fi
+
     logger -t bridgebox-wd "MGMT: попытка восстановить $WLAN через wifi-switch.sh"
 
     # Перезагрузка драйвера (может помочь при зависании USB)
