@@ -1,9 +1,4 @@
 /.idea/
 /CLAUDE.md
-/agent/.gradle/
-/agent/build/
-/.kotlin/
-/.gradle/
-/build/
 /agent-rs/target/
 /agent-rs/.cargo/
