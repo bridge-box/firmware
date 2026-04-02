@@ -9,7 +9,7 @@ const BOX_ID_FILE: &str = "/etc/bridgebox/box-id";
 const STATE_FILE: &str = "/etc/bridgebox/state";
 const BACKEND_URL_FILE: &str = "/etc/bridgebox/backend-url";
 const MAC_PATH: &str = "/sys/class/net/eth0/address";
-const DEFAULT_BACKEND_URL: &str = "http://backend.bridge-box.online";
+const HEADSCALE_URL_FILE: &str = "/etc/bridgebox/headscale-url";
 const OVERLAY_VERSION_FILE: &str = "/etc/bridgebox/overlay-version";
 const OVERLAY_STATUS_FILE: &str = "/etc/bridgebox/overlay-status";
 const DESIRED_OVERLAY_FILE: &str = "/etc/bridgebox/desired-overlay.json";
@@ -44,14 +44,14 @@ pub fn read_mac_eth0() -> Result<String, String> {
     Err(format!("не удалось прочитать MAC из {MAC_PATH}"))
 }
 
-/// Читает URL backend.
-pub fn read_backend_url() -> String {
+/// Читает URL backend. Ошибка если не настроен.
+pub fn read_backend_url() -> Result<String, String> {
     fs::read_to_string(BACKEND_URL_FILE)
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .or_else(|| std::env::var("BACKEND_URL").ok())
-        .unwrap_or_else(|| DEFAULT_BACKEND_URL.to_string())
+        .ok_or_else(|| format!("backend URL не настроен: задайте в {BACKEND_URL_FILE} или BACKEND_URL"))
 }
 
 /// Записывает текущее состояние в файл (атомарно: write .tmp + rename).
@@ -67,8 +67,6 @@ pub fn write_state(state: &DeviceState) -> Result<(), String> {
         .map_err(|e| format!("не удалось переименовать {tmp} -> {STATE_FILE}: {e}"))
 }
 
-const HEADSCALE_URL: &str = "https://hs.bridge-box.online";
-
 /// Проверяет, подключён ли Tailscale (BackendState == Running).
 pub fn is_tailscale_up() -> bool {
     let output = match std::process::Command::new("tailscale")
@@ -83,13 +81,13 @@ pub fn is_tailscale_up() -> bool {
     stdout.contains("\"BackendState\":\"Running\"")
 }
 
-/// Подключает Tailscale с auth key.
+/// Подключает Tailscale с auth key. Ошибка если headscale-url не настроен.
 pub fn tailscale_up(auth_key: &str) -> Result<(), String> {
-    let headscale_url = fs::read_to_string("/etc/bridgebox/headscale-url")
+    let headscale_url = fs::read_to_string(HEADSCALE_URL_FILE)
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| HEADSCALE_URL.to_string());
+        .ok_or_else(|| format!("Headscale URL не настроен: задайте в {HEADSCALE_URL_FILE}"))?;
 
     eprintln!("[bb-agent] Tailscale up: server={headscale_url}");
 

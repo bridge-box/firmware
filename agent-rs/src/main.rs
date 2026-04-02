@@ -35,7 +35,7 @@ fn main() -> ExitCode {
 fn cmd_register() -> Result<(), String> {
     let box_id = device::read_box_id()?;
     let mac = device::read_mac_eth0()?;
-    let backend_url = device::read_backend_url();
+    let backend_url = device::read_backend_url()?;
 
     println!("=== BridgeBox Agent: регистрация ===");
     println!("  BOX_ID:  {box_id}");
@@ -63,7 +63,7 @@ fn cmd_register() -> Result<(), String> {
 
 fn cmd_heartbeat() -> Result<(), String> {
     let box_id = device::read_box_id()?;
-    let backend_url = device::read_backend_url();
+    let backend_url = device::read_backend_url()?;
 
     // Проверяем mesh — если не подключён, пытаемся получить ключ
     if !device::is_tailscale_up() {
@@ -112,7 +112,7 @@ fn cmd_heartbeat() -> Result<(), String> {
 
 fn cmd_status() -> Result<(), String> {
     let box_id = device::read_box_id()?;
-    let backend_url = device::read_backend_url();
+    let backend_url = device::read_backend_url()?;
 
     let resp = api::get_state(&backend_url, &box_id)?;
     println!("{}", serde_json::to_string_pretty(&resp).unwrap_or_default());
@@ -133,7 +133,7 @@ fn cmd_ensure_mesh() -> Result<(), String> {
     }
 
     let box_id = device::read_box_id()?;
-    let backend_url = device::read_backend_url();
+    let backend_url = device::read_backend_url()?;
 
     let resp = api::request_auth_key(&backend_url, &box_id)?;
     let auth_key = resp.tailscale_auth_key
@@ -146,7 +146,7 @@ fn cmd_ensure_mesh() -> Result<(), String> {
 /// Используется overlay-скриптами для отправки событий.
 fn cmd_send_event() -> Result<(), String> {
     let box_id = device::read_box_id()?;
-    let backend_url = device::read_backend_url();
+    let backend_url = device::read_backend_url()?;
 
     let mut json = String::new();
     std::io::Read::read_to_string(&mut std::io::stdin(), &mut json)
@@ -164,7 +164,7 @@ fn cmd_send_event() -> Result<(), String> {
 /// Читает desired-overlay.json и применяет/откатывает.
 fn cmd_sync_overlay() -> Result<(), String> {
     let box_id = device::read_box_id()?;
-    let backend_url = device::read_backend_url();
+    let backend_url = device::read_backend_url()?;
 
     let desired = match std::fs::read_to_string("/etc/bridgebox/desired-overlay.json") {
         Ok(json) => serde_json::from_str(&json)
