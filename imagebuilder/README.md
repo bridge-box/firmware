@@ -1,6 +1,6 @@
 # BridgeWRT Image Builder
 
-Система сборки готовых образов OpenWrt для NanoPi R2S/R3S. Сборка через Docker — идемпотентная и воспроизводимая.
+Система сборки готовых образов OpenWrt для NanoPi R3S. Сборка через Docker — идемпотентная и воспроизводимая.
 
 ## Быстрый старт
 
@@ -25,8 +25,7 @@ make batch PROFILE=friendlyarm_nanopi-r3s START=1 COUNT=100
 
 | Профиль | Модель | RAM | Назначение |
 |---------|--------|-----|------------|
-| `friendlyarm_nanopi-r2s` | NanoPi R2S | 512MB | Lite (только мост) |
-| `friendlyarm_nanopi-r3s` | NanoPi R3S | 2GB | Pro (мост + будущий роутер) |
+| `friendlyarm_nanopi-r3s` | NanoPi R3S | 2GB | Мост + управление |
 
 ## Варианты
 
@@ -68,8 +67,8 @@ gunzip -k output/bridgewrt-BB-001-production-20260324.img.gz
 dd if=output/bridgewrt-BB-001-production-20260324.img of=/dev/sdX bs=4M status=progress
 
 # OTA через mesh (sysupgrade)
-scp output/bridgewrt-BB-001-production-20260324.img.gz root@100.64.0.1:/tmp/
-ssh root@100.64.0.1 'sysupgrade -v /tmp/bridgewrt-BB-001-production-20260324.img.gz'
+scp output/bridgewrt-BB-001-production-20260324.img.gz root@<tailscale-ip>:/tmp/
+ssh root@<tailscale-ip> 'sysupgrade -v /tmp/bridgewrt-BB-001-production-20260324.img.gz'
 ```
 
 ## Структура

@@ -1,6 +1,6 @@
 # BridgeBox Firmware
 
-Open-source прошивка для NanoPi R2S/R3S (OpenWrt 25.12). Прозрачный inline bridge с удалённым администрированием.
+Open-source прошивка для NanoPi R3S (OpenWrt 25.12). Прозрачный inline bridge с удалённым администрированием.
 
 ## Что это
 
