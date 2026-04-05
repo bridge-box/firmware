@@ -1,0 +1,60 @@
+#!/bin/sh /etc/rc.common
+# bridgebox-safe-mode — счётчик загрузок, переход в safe mode после 3 неудач
+#
+# Запускается ПЕРВЫМ (START=10), до агента и Wi-Fi.
+# Считает попытки загрузки: если 3 раза подряд не было успешного heartbeat —
+# переключается в safe mode (агент стартует с --safe-mode).
+#
+# Успешная загрузка сбрасывает счётчик (делается из bb-agent при heartbeat OK).
+#
+# Файлы:
+#   /etc/bridgebox/boot-state.json  — персистентный счётчик (survives reboot)
+#   /tmp/bridgebox-safe-mode        — флаг safe mode (volatile, читается агентом)
+
+START=10
+
+BOOT_STATE="/etc/bridgebox/boot-state.json"
+SAFE_MODE_FLAG="/tmp/bridgebox-safe-mode"
+
+start() {
+    mkdir -p /etc/bridgebox
+
+    # Читаем текущее состояние (fallback: first boot, normal mode)
+    if [ ! -f "$BOOT_STATE" ]; then
+        echo '{"state":"normal","failure_count":"first"}' > "$BOOT_STATE"
+    fi
+
+    local state
+    state=$(cat "$BOOT_STATE" 2>/dev/null || echo '{}')
+
+    # Парсим поле state
+    local current_state
+    current_state=$(echo "$state" | sed -n 's/.*"state":"\([^"]*\)".*/\1/p')
+
+    if [ "$current_state" = "safe_mode" ]; then
+        touch "$SAFE_MODE_FLAG"
+        logger -t bridgebox-safe-mode "SAFE MODE активен — агент запустится с --safe-mode"
+        return 0
+    fi
+
+    # Normal state — инкрементируем failure_count
+    # (агент сбросит счётчик при успешном heartbeat)
+    local failure_count
+    failure_count=$(echo "$state" | sed -n 's/.*"failure_count":"\([^"]*\)".*/\1/p')
+
+    case "$failure_count" in
+        "first")
+            echo '{"state":"normal","failure_count":"second"}' > "$BOOT_STATE"
+            logger -t bridgebox-safe-mode "попытка загрузки 2/3"
+            ;;
+        "second")
+            echo '{"state":"normal","failure_count":"third"}' > "$BOOT_STATE"
+            logger -t bridgebox-safe-mode "попытка загрузки 3/3"
+            ;;
+        "third"|*)
+            echo '{"state":"safe_mode"}' > "$BOOT_STATE"
+            touch "$SAFE_MODE_FLAG"
+            logger -t bridgebox-safe-mode "ПЕРЕХОД В SAFE MODE — 3 неудачных загрузки подряд"
+            ;;
+    esac
+}
