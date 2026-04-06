@@ -18,9 +18,10 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BridgeBox — Сброс</title>
 <style>
-body { font-family: -apple-system, sans-serif; background: #0a0a0a; color: #e0e0e0; padding: 40px 20px; text-align: center; }
-h1 { color: #facc15; margin-bottom: 16px; }
-p { color: #aaa; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #0a0a0a; color: #e0e0e0; padding: 40px 20px; text-align: center; line-height: 1.25; }
+h1 { color: #facc15; margin-bottom: 16px; text-transform: uppercase; font-weight: 300; letter-spacing: 1px; line-height: 1.15; }
+p { color: #aaa; line-height: 1.25; }
 </style>
 </head>
 <body>
@@ -46,16 +47,16 @@ cat <<EOF
 <title>BridgeBox — Сброс к заводским настройкам</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, sans-serif; background: #0a0a0a; color: #e0e0e0; padding: 20px; }
+body { font-family: -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #0a0a0a; color: #e0e0e0; padding: 20px; line-height: 1.25; }
 .container { max-width: 480px; margin: 0 auto; text-align: center; padding-top: 40px; }
-h1 { font-size: 1.4em; margin-bottom: 20px; }
-.warning { background: #3a1a1a; border: 1px solid #f87171; border-radius: 12px; padding: 16px; margin-bottom: 24px; color: #f87171; }
-.warning p { margin-bottom: 8px; }
+h1 { font-size: 1.4em; margin-bottom: 20px; text-transform: uppercase; font-weight: 300; letter-spacing: 1px; line-height: 1.20; }
+.warning { background: #3a1a1a; border: 1px solid #f87171; border-radius: 0; padding: 16px; margin-bottom: 24px; color: #f87171; }
+.warning p { margin-bottom: 8px; line-height: 1.25; }
 .warning ul { text-align: left; padding-left: 20px; color: #e0e0e0; font-size: 0.9em; }
-.warning li { margin-bottom: 4px; }
-.btn-reset { background: #dc2626; color: white; border: none; padding: 14px 32px; border-radius: 8px; font-size: 1em; font-weight: 600; cursor: pointer; }
+.warning li { margin-bottom: 4px; line-height: 1.30; }
+.btn-reset { background: #dc2626; color: white; border: none; padding: 14px 32px; border-radius: 0; font-size: 1em; font-weight: 700; cursor: pointer; }
 .btn-reset:hover { background: #b91c1c; }
-.btn-back { display: inline-block; margin-top: 16px; color: #60a5fa; text-decoration: none; font-size: 0.9em; }
+.btn-back { display: inline-block; margin-top: 16px; color: #1c69d4; text-decoration: none; font-size: 0.9em; }
 </style>
 </head>
 <body>

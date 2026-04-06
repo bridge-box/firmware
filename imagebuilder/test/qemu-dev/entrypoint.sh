@@ -63,19 +63,20 @@ ip tuntap add tap-mgmt mode tap
 ip link set tap-mgmt up
 ip link set tap-mgmt master br-mgmt
 
-ip addr add 192.168.77.1/24 dev br-mgmt
+ip addr add 192.168.88.1/24 dev br-mgmt
 
-# dnsmasq на management — DHCP для QEMU eth2
+# dnsmasq на management — ТОЛЬКО DHCP (port=0 = не слушать DNS, иначе конфликт с WAN dnsmasq)
 dnsmasq \
     --interface=br-mgmt \
     --bind-interfaces \
-    --dhcp-range=192.168.77.100,192.168.77.200,255.255.255.0,12h \
-    --dhcp-host=52:54:00:01:00:03,192.168.77.100 \
+    --port=0 \
+    --dhcp-range=192.168.88.100,192.168.88.200,255.255.255.0,12h \
+    --dhcp-host=52:54:00:01:00:03,192.168.88.100 \
     --log-facility=/dev/null \
     --pid-file=/tmp/dnsmasq-mgmt.pid \
     --no-daemon &
 
-QEMU_MGMT_IP=192.168.77.100
+QEMU_MGMT_IP=192.168.88.100
 
 # --- tinyproxy (HTTP proxy на LAN стороне) ---
 cat > /tmp/tinyproxy.conf << 'TINYEOF'

@@ -24,12 +24,11 @@ uci commit network
 uci set dropbear.@dropbear[0].Interface=''
 uci commit dropbear
 
-# Firewall — разрешить всё (dev sandbox)
-if uci show firewall >/dev/null 2>&1; then
-    uci set firewall.@defaults[0].input='ACCEPT'
-    uci set firewall.@defaults[0].output='ACCEPT'
-    uci set firewall.@defaults[0].forward='ACCEPT'
-    uci commit firewall
-fi
+# Firewall конфиг лежит в /etc/config/firewall (из overlay)
+# ACCEPT на всех интерфейсах — dev sandbox, не production
+
+# Принудительно поднять mgmt интерфейс
+# uci-defaults отрабатывает ПОСЛЕ netifd, поэтому нужен явный ifup
+(sleep 5 && ifup mgmt 2>/dev/null) &
 
 exit 0
