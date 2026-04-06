@@ -54,27 +54,113 @@ echo "" >> /etc/banner
 sed -i "s/DISTRIB_ID=.*/DISTRIB_ID='BridgeWRT'/" /etc/openwrt_release 2>/dev/null
 sed -i "s/DISTRIB_DESCRIPTION=.*/DISTRIB_DESCRIPTION='BridgeWRT ${BRIDGEWRT_VERSION}'/" /etc/openwrt_release 2>/dev/null
 
-# --- Hostname + Timezone ---
-uci set system.@system[0].hostname='bridge-box'
-uci set system.@system[0].timezone='MSK-3'
-uci set system.@system[0].zonename='Europe/Moscow'
-uci commit system
+# --- Hostname + Timezone (FirstBoot only — оператор может менять через mesh) ---
+first_boot_only uci set system.@system[0].hostname='bridge-box'
+first_boot_only uci set system.@system[0].timezone='MSK-3'
+first_boot_only uci set system.@system[0].zonename='Europe/Moscow'
+if is_first_boot; then
+    uci commit system
+fi
 
-# --- Сеть ---
+# --- Сеть (FirstBoot only — оператор может сменить IP через mesh) ---
 # LAN на 192.168.77.1/24 — не конфликтует с типичными роутерами
-uci set network.lan.ipaddr='192.168.77.1'
-uci set network.lan.netmask='255.255.255.0'
-uci commit network
+first_boot_only uci set network.lan.ipaddr='192.168.77.1'
+first_boot_only uci set network.lan.netmask='255.255.255.0'
+if is_first_boot; then
+    uci commit network
+fi
 
-# --- DHCP ---
-uci set dhcp.lan.start='100'
-uci set dhcp.lan.limit='150'
-uci set dhcp.lan.leasetime='12h'
-uci commit dhcp
+# --- DHCP (FirstBoot only) ---
+first_boot_only uci set dhcp.lan.start='100'
+first_boot_only uci set dhcp.lan.limit='150'
+first_boot_only uci set dhcp.lan.leasetime='12h'
+if is_first_boot; then
+    uci commit dhcp
+fi
 
-# --- Состояние ---
-safe_write /etc/bridgebox/state 'setup'
-safe_write /etc/bridgebox/wifi-mode 'down'
+# --- LED-индикация (FirstBoot only) ---
+# Exhaustive board_name case — unknown board = skip с warning
+if is_first_boot; then
+    BOARD_NAME=$(cat /tmp/sysinfo/board_name 2>/dev/null)
+    case "$BOARD_NAME" in
+        friendlyarm,nanopi-r2s)
+            LED_LAN="green:lan"
+            LED_WAN_OK="green:wan"
+            LED_WAN_ERR="red:wan"
+            ;;
+        friendlyarm,nanopi-r3s)
+            LED_LAN="green:lan"
+            LED_WAN_OK="green:wan"
+            LED_WAN_ERR="red:wan"
+            ;;
+        *)
+            logger -t bridgebox -p user.warn "Unknown board: $BOARD_NAME, LED config skipped"
+            LED_LAN=""
+            LED_WAN_OK=""
+            LED_WAN_ERR=""
+            ;;
+    esac
+
+    # LAN LED: link на br-lan (netdev trigger = link + tx + rx)
+    if [ -n "$LED_LAN" ]; then
+        uci set system.led_lan=led
+        uci set system.led_lan.name='bridge'
+        uci set system.led_lan.sysfs="$LED_LAN"
+        uci set system.led_lan.trigger='netdev'
+        uci set system.led_lan.dev='br-lan'
+        uci set system.led_lan.mode='link tx rx'
+    fi
+
+    # WAN OK LED: по умолчанию выключен (bb-agent включит при Tailscale connected)
+    if [ -n "$LED_WAN_OK" ]; then
+        uci set system.led_wan_ok=led
+        uci set system.led_wan_ok.name='mesh-ok'
+        uci set system.led_wan_ok.sysfs="$LED_WAN_OK"
+        uci set system.led_wan_ok.trigger='none'
+        uci set system.led_wan_ok.default='0'
+    fi
+
+    # WAN ERR LED: по умолчанию горит (bb-agent погасит при Tailscale connected)
+    if [ -n "$LED_WAN_ERR" ]; then
+        uci set system.led_wan_err=led
+        uci set system.led_wan_err.name='mesh-err'
+        uci set system.led_wan_err.sysfs="$LED_WAN_ERR"
+        uci set system.led_wan_err.trigger='default-on'
+        uci set system.led_wan_err.default='1'
+    fi
+
+    uci commit system
+fi
+
+# --- Flow offload + задержка для обработки handshake (FirstBoot only) ---
+# CT_OFFLOAD_DELAY_PACKETS = 30
+# Первые 30 пакетов проходят через софтверный стек,
+# после handshake — hardware offload.
+if is_first_boot; then
+    uci set firewall.@defaults[0].flow_offloading='1'
+    uci set firewall.@defaults[0].flow_offloading_hw='1'
+    uci commit firewall
+
+    # Патч шаблона fw4: ct original packets ge 30 перед flow offload
+    RULESET_UC="/usr/share/firewall4/templates/ruleset.uc"
+    if [ -f "$RULESET_UC" ]; then
+        if grep -q 'meta l4proto { tcp, udp } flow offload @ft;' "$RULESET_UC"; then
+            sed -i 's/meta l4proto { tcp, udp } flow offload @ft;/meta l4proto { tcp, udp } ct original packets ge 30 flow offload @ft;/' \
+                "$RULESET_UC"
+            logger -t bridgebox "Flow offload delay patched (ge 30 packets)"
+        else
+            logger -t bridgebox -p user.warn "ruleset.uc: flow offload pattern not found, skip patch"
+        fi
+    else
+        logger -t bridgebox -p user.warn "ruleset.uc not found, flow offload delay not patched"
+    fi
+fi
+
+# --- Начальное состояние (FirstBoot only) ---
+if is_first_boot; then
+    safe_write /etc/bridgebox/state 'setup'
+    safe_write /etc/bridgebox/wifi-mode 'down'
+fi
 
 # --- dnsmasq оставляем включённым ---
 # Нужен для: DHCP на LAN (setup), DNS hijack в AP mode, резолв hostname
@@ -84,5 +170,12 @@ safe_write /etc/bridgebox/wifi-mode 'down'
 /etc/init.d/bridgebox-wifi enable 2>/dev/null || true
 /etc/init.d/bridgebox-agent enable 2>/dev/null || true
 /etc/init.d/bridgebox-socks enable 2>/dev/null || true
+
+# --- Финализация ---
+# mark_initialized ПОСЛЕДНИМ — если скрипт упал раньше, при перезагрузке повторит
+if is_first_boot; then
+    mark_initialized
+    logger -t bridgebox "First boot initialization complete"
+fi
 
 exit 0

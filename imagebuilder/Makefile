@@ -34,7 +34,7 @@ COUNT    ?= 10
 # SD-карта для прошивки (автоопределение или задать вручную: SDCARD=/dev/sdX)
 SDCARD ?=
 
-.PHONY: image batch clean docker-build flash test qemu-test help
+.PHONY: image batch clean docker-build flash test qemu-test qemu-dev help
 
 test:
 	@echo "=== L1: Smoke Test ==="
@@ -52,6 +52,24 @@ qemu-test:
 	docker build -t bridgewrt-qemu-test -f test/qemu/Dockerfile .
 	docker run --rm --privileged --device /dev/kvm:/dev/kvm bridgewrt-qemu-test
 
+qemu-dev:
+	@echo "=== BridgeBox Dev Sandbox ==="
+	@echo "Кросс-компиляция Rust бинарей..."
+	@sh test/qemu-dev/build-binaries.sh
+	@echo ""
+	@echo "Сборка Docker образа (первый запуск ~5 мин)..."
+	docker build -t bridgewrt-qemu-dev -f test/qemu-dev/Dockerfile .
+	@echo ""
+	@echo "Запуск QEMU dev sandbox..."
+	docker run -it --rm \
+		--privileged \
+		--cap-add=NET_ADMIN \
+		--device /dev/kvm:/dev/kvm \
+		--device /dev/net/tun:/dev/net/tun \
+		-p 9999:9999 \
+		-p 2222:2222 \
+		bridgewrt-qemu-dev
+
 help:
 	@echo "BridgeWRT Image Builder"
 	@echo ""
@@ -61,6 +79,7 @@ help:
 	@echo "  make batch PROFILE=... COUNT=10         — собрать пакет образов"
 	@echo "  make flash SDCARD=/dev/sdX              — прошить SD-карту (последний образ)"
 	@echo "  make qemu-test                          — L3: загрузка в QEMU + проверки"
+	@echo "  make qemu-dev                           — dev sandbox: коробка на localhost:9999"
 	@echo "  make clean                              — очистить output/"
 	@echo ""
 	@echo "Профили:"

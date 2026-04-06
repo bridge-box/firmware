@@ -1,0 +1,14 @@
+# 100-bridgebox-quic-drop.nft
+#
+# Блокировка QUIC (UDP:443) на bridge
+#
+# QUIC нестабилен на некоторых провайдерах — drop на bridge
+# принуждает клиентов к fallback на TCP/TLS для стабильности.
+#
+# Chain: hook forward, priority mangle + 1
+
+add chain inet fw4 bridgebox_quic_drop {
+    type filter hook forward priority mangle + 1; policy accept;
+}
+add rule inet fw4 bridgebox_quic_drop udp dport 443 drop comment "BridgeBox: drop QUIC, force TCP fallback"
+add rule inet fw4 bridgebox_quic_drop udp sport 443 drop comment "BridgeBox: drop QUIC responses"

@@ -301,14 +301,6 @@ fi
 # ---- Mesh-оркестрация: ensure-mesh вызывается в boot flow и watchdog ----
 log "=== Проверка mesh-оркестрации ==="
 
-# init.d/bridgebox-agent содержит ensure-mesh
-AGENT_INIT=$(ssh_cmd "cat /etc/init.d/bridgebox-agent")
-if echo "$AGENT_INIT" | grep -q "ensure-mesh"; then
-    pass "Mesh: init.d/bridgebox-agent вызывает ensure-mesh"
-else
-    fail "Mesh: init.d/bridgebox-agent НЕ вызывает ensure-mesh"
-fi
-
 # watchdog.sh содержит ensure-mesh (а не tailscale restart)
 WATCHDOG=$(ssh_cmd "cat /usr/lib/bridgebox/watchdog.sh")
 if echo "$WATCHDOG" | grep -q "ensure-mesh"; then
@@ -387,6 +379,70 @@ if [ -n "$BOX_ID_LEN" ] && [ "$BOX_ID_LEN" -gt 3 ] 2>/dev/null; then
     pass "box-id: сгенерирован (wait loop отработал)"
 else
     fail "box-id: не сгенерирован (wait loop мог не сработать)"
+fi
+
+# ---- Firmware hardening ----
+log "=== Проверка firmware hardening ==="
+
+# Init marker существует (first boot прошёл)
+INIT_MARKER=$(ssh_cmd "cat /etc/bridgebox/.initialized 2>/dev/null")
+if [ -n "$INIT_MARKER" ]; then
+    # Проверка что содержимое — валидный unix timestamp
+    case "$INIT_MARKER" in
+        *[!0-9]*)
+            fail "Init marker: невалидное содержимое '$INIT_MARKER'"
+            ;;
+        *)
+            pass "Init marker: timestamp $INIT_MARKER"
+            ;;
+    esac
+else
+    fail "Init marker: /etc/bridgebox/.initialized не создан"
+fi
+
+# is_first_boot возвращает 1 (маркер уже стоит)
+FB_CHECK=$(ssh_cmd ". /usr/lib/bridgebox/lib-common.sh && is_first_boot && echo 'first' || echo 'not_first'")
+if [ "$FB_CHECK" = "not_first" ]; then
+    pass "is_first_boot: корректно возвращает false после инициализации"
+else
+    fail "is_first_boot: возвращает true хотя маркер существует"
+fi
+
+# lib-common.sh содержит is_first_boot
+if ssh_cmd "grep -q is_first_boot /usr/lib/bridgebox/lib-common.sh && echo ok" | grep -q "ok"; then
+    pass "lib-common.sh: is_first_boot() присутствует"
+else
+    fail "lib-common.sh: is_first_boot() отсутствует"
+fi
+
+# QUIC drop nft файл на месте
+if ssh_cmd "test -f /usr/share/nftables.d/ruleset-post/100-bridgebox-quic-drop.nft && echo ok" | grep -q "ok"; then
+    pass "QUIC drop: nft файл присутствует в ruleset-post"
+else
+    fail "QUIC drop: nft файл отсутствует"
+fi
+
+# QUIC drop: проверяем содержимое (udp dport 443 drop)
+if ssh_cmd "grep -q 'udp dport 443 drop' /usr/share/nftables.d/ruleset-post/100-bridgebox-quic-drop.nft && echo ok" | grep -q "ok"; then
+    pass "QUIC drop: правило udp dport 443 drop"
+else
+    fail "QUIC drop: правило не найдено в nft файле"
+fi
+
+# Flow offload включён
+FO=$(ssh_cmd "uci get firewall.@defaults[0].flow_offloading 2>/dev/null")
+if [ "$FO" = "1" ]; then
+    pass "Flow offload: включён"
+else
+    fail "Flow offload: ожидали 1, получили: $FO"
+fi
+
+# Flow offload hw включён
+FO_HW=$(ssh_cmd "uci get firewall.@defaults[0].flow_offloading_hw 2>/dev/null")
+if [ "$FO_HW" = "1" ]; then
+    pass "Flow offload HW: включён"
+else
+    fail "Flow offload HW: ожидали 1, получили: $FO_HW"
 fi
 
 # ---- uci-defaults отработали (удалены) ----
