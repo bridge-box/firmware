@@ -162,6 +162,16 @@ if is_first_boot; then
     safe_write /etc/bridgebox/wifi-mode 'down'
 fi
 
+# --- uhttpd: слушать только на management интерфейсе ---
+# По умолчанию uhttpd на 0.0.0.0:80 — перехватывает трафик на br0,
+# что ломает tunnel inbound (sing-box direct :80).
+# Привязываем к LAN IP (192.168.77.1) — до setup-bridge.sh это LAN,
+# после — management через wlan0/eth2 (sandbox).
+first_boot_only uci set uhttpd.main.listen_http='192.168.77.1:80'
+if is_first_boot; then
+    uci commit uhttpd
+fi
+
 # --- dnsmasq оставляем включённым ---
 # Нужен для: DHCP на LAN (setup), DNS hijack в AP mode, резолв hostname
 # В bridge mode setup-bridge.sh НЕ отключает его (нужен для Wi-Fi AP)

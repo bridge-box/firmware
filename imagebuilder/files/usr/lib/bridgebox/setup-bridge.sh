@@ -91,12 +91,10 @@ uci set network.bridge.proto='none'
 
 echo "[5/7] Отключение ненужных служб..."
 
-# firewall — трафик идёт транзитом на L2, файрвол не нужен
-if [ -f /etc/init.d/firewall ]; then
-    /etc/init.d/firewall stop 2>/dev/null || true
-    /etc/init.d/firewall disable 2>/dev/null || true
-    echo "  firewall: остановлен и отключён"
-fi
+# firewall — fw4 таблица не нужна на мосту (L2, не маршрутизируем),
+# но fw4 сервис должен быть ВКЛЮЧЁН — он загружает ruleset-post/*.nft
+# (nfqdns, quic-drop). Саму таблицу fw4 удалим ниже при nft очистке.
+echo "  firewall: fw4 оставляем enabled (для ruleset-post)"
 
 # odhcpd — IPv6 DHCP/RA сервер, не нужен на мосту
 if [ -f /etc/init.d/odhcpd ]; then
@@ -108,8 +106,17 @@ fi
 # НЕ трогаем dnsmasq — он нужен для Wi-Fi AP mode (captive portal)
 echo "  dnsmasq: не трогаем (используется Wi-Fi AP mode)"
 
-# Очистка nftables (файрвол мог оставить правила)
-nft flush ruleset 2>/dev/null || true
+# Очистка nftables: удаляем только fw4 таблицу, сохраняем overlay-правила
+# (nfqdns, quic-drop и т.д. живут в отдельных таблицах)
+nft delete table inet fw4 2>/dev/null || true
+
+# Перезагружаем overlay nft правила из ruleset-post
+for nft_file in /usr/share/nftables.d/ruleset-post/*.nft; do
+    if [ -f "$nft_file" ]; then
+        nft -f "$nft_file" 2>/dev/null || true
+        echo "  nft: загружен $(basename "$nft_file")"
+    fi
+done
 
 # --- Шаг 6: Применение ---
 

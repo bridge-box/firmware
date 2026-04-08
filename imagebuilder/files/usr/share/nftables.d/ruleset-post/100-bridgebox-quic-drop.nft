@@ -5,10 +5,15 @@
 # QUIC нестабилен на некоторых провайдерах — drop на bridge
 # принуждает клиентов к fallback на TCP/TLS для стабильности.
 #
-# Chain: hook forward, priority mangle + 1
+# Отдельная таблица — не зависит от fw4, переживает firewall restart.
+# Идемпотентный: delete + create предотвращают дублирование при fw4 reload.
 
-add chain inet fw4 bridgebox_quic_drop {
-    type filter hook forward priority mangle + 1; policy accept;
+table inet bridgebox_quic_drop
+delete table inet bridgebox_quic_drop
+table inet bridgebox_quic_drop {
+    chain forward {
+        type filter hook forward priority mangle + 1; policy accept;
+        udp dport 443 drop comment "BridgeBox: drop QUIC, force TCP fallback"
+        udp sport 443 drop comment "BridgeBox: drop QUIC responses"
+    }
 }
-add rule inet fw4 bridgebox_quic_drop udp dport 443 drop comment "BridgeBox: drop QUIC, force TCP fallback"
-add rule inet fw4 bridgebox_quic_drop udp sport 443 drop comment "BridgeBox: drop QUIC responses"
