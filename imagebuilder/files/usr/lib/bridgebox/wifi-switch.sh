@@ -229,9 +229,17 @@ WPA
         return 1
     fi
 
+    # DNS: прокидываем upstream в dnsmasq
+    mkdir -p /tmp/resolv.conf.d
+    cat > /tmp/resolv.conf.d/resolv.conf.auto <<DNSEOF
+nameserver $FALLBACK_DNS
+nameserver 1.1.1.1
+DNSEOF
+    /etc/init.d/dnsmasq restart 2>/dev/null || true
+    log "DNS: upstream $FALLBACK_DNS, 1.1.1.1"
+
     # Проверяем интернет
     local dns_ok=0
-    echo "nameserver $FALLBACK_DNS" > /tmp/resolv.conf
     if ping -c 1 -W 5 "$FALLBACK_DNS" >/dev/null 2>&1; then
         dns_ok=1
     fi
@@ -308,7 +316,14 @@ restore_sta() {
     fi
 
     udhcpc -i "$WLAN" -q -t 10 -n -p /tmp/udhcpc-wlan0.pid 2>/dev/null
-    echo "nameserver $FALLBACK_DNS" > /tmp/resolv.conf
+
+    # DNS: прокидываем upstream в dnsmasq
+    mkdir -p /tmp/resolv.conf.d
+    cat > /tmp/resolv.conf.d/resolv.conf.auto <<DNSEOF
+nameserver $FALLBACK_DNS
+nameserver 1.1.1.1
+DNSEOF
+    /etc/init.d/dnsmasq restart 2>/dev/null || true
 
     local ip
     ip=$(ip -4 addr show "$WLAN" 2>/dev/null | grep -o 'inet [0-9.]*' | cut -d' ' -f2)

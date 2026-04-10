@@ -62,21 +62,15 @@ if is_first_boot; then
     uci commit system
 fi
 
-# --- Сеть (FirstBoot only — оператор может сменить IP через mesh) ---
-# LAN на 192.168.77.1/24 — не конфликтует с типичными роутерами
-first_boot_only uci set network.lan.ipaddr='192.168.77.1'
-first_boot_only uci set network.lan.netmask='255.255.255.0'
-if is_first_boot; then
-    uci commit network
-fi
+# --- Сеть ---
+# Конфиг подложен в /etc/config/network (files overlay):
+#   eth1 = LAN management (192.168.77.1), standalone, НЕ в bridge
+#   eth0 = WAN, proto none
+# Bridge создаётся позже через setup-bridge.sh после provisioning.
+# Так оператор ВСЕГДА имеет доступ через LAN-кабель.
 
-# --- DHCP (FirstBoot only) ---
-first_boot_only uci set dhcp.lan.start='100'
-first_boot_only uci set dhcp.lan.limit='150'
-first_boot_only uci set dhcp.lan.leasetime='12h'
-if is_first_boot; then
-    uci commit dhcp
-fi
+# --- DHCP ---
+# Конфиг подложен в /etc/config/dhcp (files overlay)
 
 # --- LED-индикация (FirstBoot only) ---
 # Exhaustive board_name case — unknown board = skip с warning
@@ -101,47 +95,33 @@ if is_first_boot; then
             ;;
     esac
 
-    # LAN LED: link на br-lan (netdev trigger = link + tx + rx)
+    # WAN LED = mesh status (tailscale0 link — горит когда mesh подключен)
+    if [ -n "$LED_WAN_OK" ]; then
+        uci set system.led_wan=led
+        uci set system.led_wan.name='mesh'
+        uci set system.led_wan.sysfs="$LED_WAN_OK"
+        uci set system.led_wan.trigger='netdev'
+        uci set system.led_wan.dev='tailscale0'
+        uci set system.led_wan.mode='link'
+    fi
+
+    # LAN LED = bridge activity (выключен в setup, setup-bridge.sh привяжет к br0)
     if [ -n "$LED_LAN" ]; then
         uci set system.led_lan=led
         uci set system.led_lan.name='bridge'
         uci set system.led_lan.sysfs="$LED_LAN"
-        uci set system.led_lan.trigger='netdev'
-        uci set system.led_lan.dev='br-lan'
-        uci set system.led_lan.mode='link tx rx'
-    fi
-
-    # WAN OK LED: по умолчанию выключен (bb-agent включит при Tailscale connected)
-    if [ -n "$LED_WAN_OK" ]; then
-        uci set system.led_wan_ok=led
-        uci set system.led_wan_ok.name='mesh-ok'
-        uci set system.led_wan_ok.sysfs="$LED_WAN_OK"
-        uci set system.led_wan_ok.trigger='none'
-        uci set system.led_wan_ok.default='0'
-    fi
-
-    # WAN ERR LED: по умолчанию горит (bb-agent погасит при Tailscale connected)
-    if [ -n "$LED_WAN_ERR" ]; then
-        uci set system.led_wan_err=led
-        uci set system.led_wan_err.name='mesh-err'
-        uci set system.led_wan_err.sysfs="$LED_WAN_ERR"
-        uci set system.led_wan_err.trigger='default-on'
-        uci set system.led_wan_err.default='1'
+        uci set system.led_lan.trigger='none'
+        uci set system.led_lan.default='0'
     fi
 
     uci commit system
 fi
 
-# --- Flow offload + задержка для обработки handshake (FirstBoot only) ---
-# CT_OFFLOAD_DELAY_PACKETS = 30
-# Первые 30 пакетов проходят через софтверный стек,
-# после handshake — hardware offload.
+# --- Flow offload delay (FirstBoot only) ---
+# Патч шаблона fw4: ct original packets ge 30 перед flow offload
+# Первые 30 пакетов проходят через софтверный стек (для DPI bypass handshake),
+# после — hardware offload.
 if is_first_boot; then
-    uci set firewall.@defaults[0].flow_offloading='1'
-    uci set firewall.@defaults[0].flow_offloading_hw='1'
-    uci commit firewall
-
-    # Патч шаблона fw4: ct original packets ge 30 перед flow offload
     RULESET_UC="/usr/share/firewall4/templates/ruleset.uc"
     if [ -f "$RULESET_UC" ]; then
         if grep -q 'meta l4proto { tcp, udp } flow offload @ft;' "$RULESET_UC"; then
@@ -151,10 +131,12 @@ if is_first_boot; then
         else
             logger -t bridgebox -p user.warn "ruleset.uc: flow offload pattern not found, skip patch"
         fi
-    else
-        logger -t bridgebox -p user.warn "ruleset.uc not found, flow offload delay not patched"
     fi
 fi
+
+# --- Firewall ---
+# fw4 отключается через bridgebox-firewall init.d (START=20, каждая загрузка)
+# QUIC drop через nftables ruleset-post
 
 # --- Начальное состояние (FirstBoot only) ---
 if is_first_boot; then
@@ -162,12 +144,10 @@ if is_first_boot; then
     safe_write /etc/bridgebox/wifi-mode 'down'
 fi
 
-# --- uhttpd: слушать только на management интерфейсе ---
-# По умолчанию uhttpd на 0.0.0.0:80 — перехватывает трафик на br0,
-# что ломает tunnel inbound (sing-box direct :80).
-# Привязываем к LAN IP (192.168.77.1) — до setup-bridge.sh это LAN,
-# после — management через wlan0/eth2 (sandbox).
-first_boot_only uci set uhttpd.main.listen_http='192.168.77.1:80'
+# --- uhttpd: слушать на всех интерфейсах в setup ---
+# В setup state: 0.0.0.0:80 — доступен и через eth1, и через wlan0
+# setup-bridge.sh переключит на management IP после provisioning
+first_boot_only uci set uhttpd.main.listen_http='0.0.0.0:80'
 if is_first_boot; then
     uci commit uhttpd
 fi
@@ -176,7 +156,14 @@ fi
 # Нужен для: DHCP на LAN (setup), DNS hijack в AP mode, резолв hostname
 # В bridge mode setup-bridge.sh НЕ отключает его (нужен для Wi-Fi AP)
 
+# --- Firewall: отключаем ---
+# Коробка — мост, не роутер. fw4 зоны блокируют SSH/HTTP на wlan0.
+# QUIC drop через отдельный nftables ruleset-post, не зависит от fw4.
+/etc/init.d/firewall disable 2>/dev/null || true
+/etc/init.d/firewall stop 2>/dev/null || true
+
 # --- Автозапуск сервисов ---
+/etc/init.d/bridgebox-firewall enable 2>/dev/null || true
 /etc/init.d/bridgebox-wifi enable 2>/dev/null || true
 /etc/init.d/bridgebox-agent enable 2>/dev/null || true
 /etc/init.d/bridgebox-socks enable 2>/dev/null || true

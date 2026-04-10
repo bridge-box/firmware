@@ -26,6 +26,8 @@ PROFILE  ?=
 BOX_ID   ?= TEMPLATE
 VARIANT  ?= production
 AUTH_KEY ?=
+WIFI_SSID ?=
+WIFI_PASS ?=
 START    ?= 1
 COUNT    ?= 10
 
@@ -110,7 +112,9 @@ image:
 		PROFILE="$(PROFILE)" \
 		BOX_ID="$(BOX_ID)" \
 		VARIANT="$(VARIANT)" \
-		$(if $(AUTH_KEY),AUTH_KEY="$(AUTH_KEY)")
+		$(if $(AUTH_KEY),AUTH_KEY="$(AUTH_KEY)") \
+		$(if $(WIFI_SSID),WIFI_SSID="$(WIFI_SSID)") \
+		$(if $(WIFI_PASS),WIFI_PASS="$(WIFI_PASS)")
 
 batch:
 	@if [ -z "$(PROFILE)" ]; then echo "Ошибка: PROFILE не задан" >&2; exit 1; fi
@@ -134,8 +138,8 @@ flash:
 	echo ""; \
 	echo "Отмонтируем партиции..."; \
 	for p in $(SDCARD)*; do sudo umount "$$p" 2>/dev/null || true; done; \
-	echo "Обнуляем первые 200MB (чистый старт)..."; \
-	sudo dd if=/dev/zero of=$(SDCARD) bs=4M count=50 status=progress conv=fsync 2>&1; \
+	echo "Обнуляем первые 1GB (чистый старт, включая overlay)..."; \
+	sudo dd if=/dev/zero of=$(SDCARD) bs=4M count=256 status=progress conv=fsync 2>&1; \
 	echo "Записываем образ..."; \
 	zcat "$$IMGFILE" | sudo dd of=$(SDCARD) bs=4M status=progress conv=fsync 2>&1; \
 	sudo sync; \

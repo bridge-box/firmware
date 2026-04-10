@@ -38,7 +38,7 @@ fi
 # Wi-Fi драйверы: несколько популярных USB чипов для универсальности
 # wpad-basic-mbedtls = hostapd (AP mode) + wpa_supplicant (STA mode) в одном пакете
 # dnsmasq нужен для DHCP + DNS hijack в AP mode (captive portal)
-PACKAGES_BASE="tailscale wpad-basic-mbedtls -wpa-supplicant uhttpd dnsmasq kmod-rtl8xxxu rtl8188eu-firmware kmod-mt76x0u kmod-ath9k-htc"
+PACKAGES_BASE="tailscale wpad-basic-mbedtls -wpa-supplicant uhttpd dnsmasq kmod-rtl8xxxu rtl8188eu-firmware rtl8192eu-firmware kmod-mt76x0u kmod-ath9k-htc"
 
 if [ "$VARIANT" = "vanilla" ]; then
     # Эталон: чистая OpenWrt, идентичная скачанной с openwrt.org
@@ -53,6 +53,20 @@ fi
 # --- Инжектим BOX_ID ---
 
 sh /builder/scripts/inject-identity.sh "$BOX_ID"
+
+# --- Wi-Fi credentials (опционально) ---
+
+if [ -n "$WIFI_SSID" ]; then
+    mkdir -p /builder/files/etc/bridgebox
+    cat > /builder/files/etc/bridgebox/wpa.conf <<WPAEOF
+network={
+    ssid="$WIFI_SSID"
+    psk="$WIFI_PASS"
+    key_mgmt=WPA-PSK
+}
+WPAEOF
+    echo "  WIFI: $WIFI_SSID (вшит в образ)"
+fi
 
 # --- Сборка ---
 

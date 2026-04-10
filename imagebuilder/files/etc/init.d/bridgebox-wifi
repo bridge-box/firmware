@@ -28,6 +28,26 @@ start() {
     fi
     echo $$ > "$LOCK"
 
+    # LED: мигаем WAN LED пока ищем Wi-Fi (оператор видит что коробка загружается)
+    led_blink() {
+        echo "timer" > /sys/class/leds/green:wan/trigger 2>/dev/null
+        echo 500 > /sys/class/leds/green:wan/delay_on 2>/dev/null
+        echo 500 > /sys/class/leds/green:wan/delay_off 2>/dev/null
+    }
+    led_on() {
+        echo "default-on" > /sys/class/leds/green:wan/trigger 2>/dev/null
+    }
+    led_off() {
+        echo "none" > /sys/class/leds/green:wan/trigger 2>/dev/null
+        echo 0 > /sys/class/leds/green:wan/brightness 2>/dev/null
+    }
+    led_err() {
+        echo "default-on" > /sys/class/leds/red:wan/trigger 2>/dev/null
+    }
+
+    led_blink
+    logger -t bridgebox-wifi "Ожидание Wi-Fi адаптера..."
+
     # Ждём появления USB Wi-Fi адаптера (rtl8xxxu грузится асинхронно)
     local attempt=0
     while [ $attempt -lt 15 ]; do
@@ -38,6 +58,7 @@ start() {
 
     if [ -z "$(ls /sys/class/ieee80211/ 2>/dev/null)" ]; then
         logger -t bridgebox-wifi "Wi-Fi адаптер не найден за 30 сек"
+        led_err
 
         if [ -f "$MGMT_IFACE_FILE" ]; then
             # Sandbox: management через ethernet (eth2)
@@ -58,6 +79,7 @@ start() {
                 logger -t bridgebox-wifi "Sandbox: $mgmt_iface IP=$mgmt_ip"
                 . /usr/lib/bridgebox/lib-common.sh
                 safe_write /etc/bridgebox/wifi-mode "sta"
+                led_on
                 rm -f "$LOCK"
                 return 0
             else
@@ -69,8 +91,9 @@ start() {
             fi
         fi
 
-        # Реальное железо: аварийный management на eth1
-        logger -t bridgebox-wifi "Аварийный доступ через eth1 (192.168.77.1)"
+        # Реальное железо: eth1 уже standalone management (192.168.77.1)
+        # Убеждаемся что IP на месте
+        logger -t bridgebox-wifi "Wi-Fi недоступен — management через eth1 (192.168.77.1)"
         ip addr add 192.168.77.1/24 dev eth1 2>/dev/null || true
         ip link set eth1 up 2>/dev/null || true
         . /usr/lib/bridgebox/lib-common.sh
@@ -78,6 +101,10 @@ start() {
         rm -f "$LOCK"
         return 1
     fi
+
+    # Wi-Fi найден
+    logger -t bridgebox-wifi "Wi-Fi адаптер найден"
+    led_on
 
     # Даём драйверу стабилизироваться
     sleep 3
