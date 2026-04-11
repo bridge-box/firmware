@@ -1,0 +1,55 @@
+#!/bin/sh
+# Одноразовый диагностический дамп при first boot
+# Результат: /etc/bridgebox/diagnostic.log
+# Вытащи SD → примонтируй → прочитай файл
+
+exec > /etc/bridgebox/diagnostic.log 2>&1
+
+echo "=== DATE ==="
+date
+
+echo "=== NETWORK CONFIG ==="
+cat /etc/config/network
+
+echo "=== FIREWALL CONFIG ==="
+cat /etc/config/firewall 2>/dev/null || echo "(fw4 removed, no firewall config)"
+
+echo "=== INTERFACES ==="
+ip addr
+
+echo "=== NFT RULESET ==="
+nft list ruleset 2>&1
+
+echo "=== RESOLV ==="
+cat /tmp/resolv.conf 2>/dev/null
+echo "--- auto ---"
+cat /tmp/resolv.conf.d/resolv.conf.auto 2>/dev/null
+
+echo "=== DNS TEST ==="
+nslookup backend.bridge-box.online 8.8.8.8 2>&1
+
+echo "=== WIFI MODE ==="
+cat /etc/bridgebox/wifi-mode 2>/dev/null
+
+echo "=== WPA CONF ==="
+cat /etc/bridgebox/wpa.conf 2>/dev/null
+
+echo "=== BOARD.D FILES ==="
+ls -la /etc/board.d/
+
+echo "=== UCI-DEFAULTS RAN ==="
+ls /etc/uci-defaults/ 2>/dev/null || echo "all executed (dir empty)"
+
+echo "=== INIT.D ENABLED ==="
+ls /etc/rc.d/S* 2>/dev/null
+
+echo "=== PROCESSES ==="
+ps | grep -E "bb-agent|dropbear|uhttpd|dnsmasq|tailscale|wpa_supplicant"
+
+echo "=== DROPBEAR CONFIG ==="
+cat /etc/config/dropbear 2>/dev/null
+
+echo "=== AGENT LOG ==="
+logread 2>/dev/null | grep -E "bb-agent|bridgebox" | tail -30
+
+echo "=== DONE ==="

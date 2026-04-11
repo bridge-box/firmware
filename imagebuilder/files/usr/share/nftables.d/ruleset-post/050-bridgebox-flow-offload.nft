@@ -1,0 +1,24 @@
+# 050-bridgebox-flow-offload.nft
+#
+# Hardware + software flow offload для bridge
+#
+# Первые 30 пакетов проходят через софтверный стек
+# (нужно для DPI bypass handshake), после — hw offload.
+#
+# Отдельная таблица — не зависит от fw4.
+# Идемпотентный: delete + create.
+
+table inet bridgebox_offload
+delete table inet bridgebox_offload
+table inet bridgebox_offload {
+    flowtable ft {
+        hook ingress priority 0
+        devices = { eth0, eth1 }
+        flags offload
+    }
+
+    chain forward {
+        type filter hook forward priority -1; policy accept;
+        meta l4proto { tcp, udp } ct original packets ge 30 flow offload @ft comment "BridgeBox: hw offload after 30 pkt handshake"
+    }
+}

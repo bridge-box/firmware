@@ -24,8 +24,7 @@ uci commit network
 uci set dropbear.@dropbear[0].Interface=''
 uci commit dropbear
 
-# Firewall конфиг лежит в /etc/config/firewall (из overlay)
-# ACCEPT на всех интерфейсах — dev sandbox, не production
+# fw4 убран из пакетов — нет зон, SSH доступен на всех интерфейсах
 
 # Принудительно поднять mgmt интерфейс
 # uci-defaults отрабатывает ПОСЛЕ netifd, поэтому нужен явный ifup

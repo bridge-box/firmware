@@ -117,26 +117,11 @@ if is_first_boot; then
     uci commit system
 fi
 
-# --- Flow offload delay (FirstBoot only) ---
-# Патч шаблона fw4: ct original packets ge 30 перед flow offload
-# Первые 30 пакетов проходят через софтверный стек (для DPI bypass handshake),
-# после — hardware offload.
-if is_first_boot; then
-    RULESET_UC="/usr/share/firewall4/templates/ruleset.uc"
-    if [ -f "$RULESET_UC" ]; then
-        if grep -q 'meta l4proto { tcp, udp } flow offload @ft;' "$RULESET_UC"; then
-            sed -i 's/meta l4proto { tcp, udp } flow offload @ft;/meta l4proto { tcp, udp } ct original packets ge 30 flow offload @ft;/' \
-                "$RULESET_UC"
-            logger -t bridgebox "Flow offload delay patched (ge 30 packets)"
-        else
-            logger -t bridgebox -p user.warn "ruleset.uc: flow offload pattern not found, skip patch"
-        fi
-    fi
-fi
-
-# --- Firewall ---
-# fw4 отключается через bridgebox-firewall init.d (START=20, каждая загрузка)
-# QUIC drop через nftables ruleset-post
+# --- nftables ---
+# fw4 убран из пакетов. Все nft правила загружаются через bridgebox-nftables:
+# - QUIC drop (ruleset-post/100-bridgebox-quic-drop.nft)
+# - Flow offload с задержкой 30 пакетов (ruleset-post/050-bridgebox-flow-offload.nft)
+# - Overlay правила (nfqdns и т.д.)
 
 # --- Начальное состояние (FirstBoot only) ---
 if is_first_boot; then
@@ -156,14 +141,8 @@ fi
 # Нужен для: DHCP на LAN (setup), DNS hijack в AP mode, резолв hostname
 # В bridge mode setup-bridge.sh НЕ отключает его (нужен для Wi-Fi AP)
 
-# --- Firewall: отключаем ---
-# Коробка — мост, не роутер. fw4 зоны блокируют SSH/HTTP на wlan0.
-# QUIC drop через отдельный nftables ruleset-post, не зависит от fw4.
-/etc/init.d/firewall disable 2>/dev/null || true
-/etc/init.d/firewall stop 2>/dev/null || true
-
 # --- Автозапуск сервисов ---
-/etc/init.d/bridgebox-firewall enable 2>/dev/null || true
+/etc/init.d/bridgebox-nftables enable 2>/dev/null || true
 /etc/init.d/bridgebox-wifi enable 2>/dev/null || true
 /etc/init.d/bridgebox-agent enable 2>/dev/null || true
 /etc/init.d/bridgebox-socks enable 2>/dev/null || true

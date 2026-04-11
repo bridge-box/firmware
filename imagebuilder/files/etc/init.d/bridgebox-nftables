@@ -1,0 +1,44 @@
+#!/bin/sh /etc/rc.common
+# bridgebox-nftables — Загрузка nftables правил при boot
+#
+# Заменяет fw4 для BridgeBox. Коробка — мост, не роутер,
+# зональный firewall не нужен. Загружаем только наши правила:
+# - QUIC drop (UDP:443)
+# - flow offload (hardware + software с задержкой 30 пакетов)
+# - overlay правила из ruleset-post (nfqdns и т.д.)
+#
+# Правила в отдельных таблицах — идемпотентные, безопасно перезапускать.
+
+START=19
+STOP=90
+
+USE_PROCD=1
+
+RULESET_POST_DIR="/usr/share/nftables.d/ruleset-post"
+
+start_service() {
+    logger -t bridgebox-nftables "Загрузка nftables правил..."
+
+    # Загружаем все правила из ruleset-post
+    if [ -d "$RULESET_POST_DIR" ]; then
+        for nft_file in "$RULESET_POST_DIR"/*.nft; do
+            if [ -f "$nft_file" ]; then
+                if nft -f "$nft_file" 2>/dev/null; then
+                    logger -t bridgebox-nftables "Загружен: $(basename "$nft_file")"
+                else
+                    logger -t bridgebox-nftables -p user.err "ОШИБКА: $(basename "$nft_file")"
+                fi
+            fi
+        done
+    fi
+
+    logger -t bridgebox-nftables "nftables правила загружены"
+}
+
+stop_service() {
+    logger -t bridgebox-nftables "nftables правила НЕ удаляются при stop (safety)"
+}
+
+reload_service() {
+    start_service
+}

@@ -385,7 +385,7 @@ section "Сценарий 12: setup-bridge.sh конфигурация"
 
 setup
 # Мокаем init.d скрипты чтобы stop/disable не падали
-for svc in dnsmasq firewall odhcpd network; do
+for svc in dnsmasq odhcpd network bridgebox-nftables; do
     mkdir -p /etc/init.d
     printf '#!/bin/sh\nexit 0\n' > "/etc/init.d/$svc"
     chmod +x "/etc/init.d/$svc"

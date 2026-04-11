@@ -11,8 +11,12 @@ STOP=10
 USE_PROCD=1
 
 start_service() {
-    # Fallback DNS — нужен до получения DNS от DHCP
+    # Гарантируем DNS — dnsmasq читает из resolv.conf.d, не resolv.conf
+    mkdir -p /tmp/resolv.conf.d
     echo "nameserver 8.8.8.8" > /tmp/resolv.conf
+    echo "nameserver 8.8.8.8" > /tmp/resolv.conf.d/resolv.conf.auto
+    echo "nameserver 1.1.1.1" >> /tmp/resolv.conf.d/resolv.conf.auto
+    /etc/init.d/dnsmasq restart 2>/dev/null || true
 
     # Проверяем флаг safe mode (выставляется bridgebox-safe-mode при старте)
     local SAFE_MODE=""

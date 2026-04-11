@@ -429,20 +429,32 @@ else
     fail "QUIC drop: правило не найдено в nft файле"
 fi
 
-# Flow offload включён
-FO=$(ssh_cmd "uci get firewall.@defaults[0].flow_offloading 2>/dev/null")
-if [ "$FO" = "1" ]; then
-    pass "Flow offload: включён"
+# Flow offload nft файл на месте
+if ssh_cmd "test -f /usr/share/nftables.d/ruleset-post/050-bridgebox-flow-offload.nft && echo ok" | grep -q "ok"; then
+    pass "Flow offload: nft файл присутствует в ruleset-post"
 else
-    fail "Flow offload: ожидали 1, получили: $FO"
+    fail "Flow offload: nft файл отсутствует"
 fi
 
-# Flow offload hw включён
-FO_HW=$(ssh_cmd "uci get firewall.@defaults[0].flow_offloading_hw 2>/dev/null")
-if [ "$FO_HW" = "1" ]; then
-    pass "Flow offload HW: включён"
+# Flow offload: проверяем содержимое (ct original packets ge 30)
+if ssh_cmd "grep -q 'ct original packets ge 30' /usr/share/nftables.d/ruleset-post/050-bridgebox-flow-offload.nft && echo ok" | grep -q "ok"; then
+    pass "Flow offload: задержка 30 пакетов"
 else
-    fail "Flow offload HW: ожидали 1, получили: $FO_HW"
+    fail "Flow offload: задержка 30 пакетов не найдена"
+fi
+
+# fw4 отключен (не установлен)
+if ssh_cmd "test -f /etc/init.d/firewall && echo exists" | grep -q "exists"; then
+    fail "fw4: firewall init.d присутствует (должен быть удалён из пакетов)"
+else
+    pass "fw4: не установлен"
+fi
+
+# bridgebox-nftables включен
+if ssh_cmd "/etc/init.d/bridgebox-nftables enabled && echo ok" | grep -q "ok"; then
+    pass "bridgebox-nftables: включен"
+else
+    fail "bridgebox-nftables: не включен"
 fi
 
 # ---- uci-defaults отработали (удалены) ----

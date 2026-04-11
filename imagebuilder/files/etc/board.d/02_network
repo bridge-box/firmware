@@ -1,0 +1,5 @@
+#!/bin/sh
+# 02_network — заменён BridgeBox
+# Дефолтный rockchip 02_network создаёт br-lan — нам не нужен.
+# Сеть настроена через /etc/config/network overlay.
+exit 0

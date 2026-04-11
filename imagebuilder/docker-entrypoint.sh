@@ -38,7 +38,12 @@ fi
 # Wi-Fi драйверы: несколько популярных USB чипов для универсальности
 # wpad-basic-mbedtls = hostapd (AP mode) + wpa_supplicant (STA mode) в одном пакете
 # dnsmasq нужен для DHCP + DNS hijack в AP mode (captive portal)
-PACKAGES_BASE="tailscale wpad-basic-mbedtls -wpa-supplicant uhttpd dnsmasq kmod-rtl8xxxu rtl8188eu-firmware rtl8192eu-firmware kmod-mt76x0u kmod-ath9k-htc"
+# -firewall4: fw4 не нужен на мосту (блокирует SSH на wlan0/tailscale0).
+# nftables правила загружаются через bridgebox-nftables init.d.
+# -firewall4: fw4 не нужен на мосту (блокирует SSH на wlan0/tailscale0).
+# kmod-nft-offload: flowtable для hardware flow offload (без fw4 не ставится автоматом).
+# nftables правила загружаются через bridgebox-nftables init.d.
+PACKAGES_BASE="tailscale wpad-basic-mbedtls -wpa-supplicant uhttpd dnsmasq -firewall4 kmod-nft-offload kmod-rtl8xxxu rtl8188eu-firmware rtl8192eu-firmware kmod-mt76x0u kmod-ath9k-htc"
 
 if [ "$VARIANT" = "vanilla" ]; then
     # Эталон: чистая OpenWrt, идентичная скачанной с openwrt.org

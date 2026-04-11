@@ -22,8 +22,6 @@ uci commit network
 uci set dropbear.@dropbear[0].Interface=''
 uci commit dropbear
 
-# Firewall: разрешаем SSH из wan (по умолчанию заблокирован)
-# Проще всего — отключить firewall в тестовом окружении
-/etc/init.d/firewall disable 2>/dev/null || true
+# fw4 убран из пакетов — firewall не блокирует SSH
 
 exit 0
