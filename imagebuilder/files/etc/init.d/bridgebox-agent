@@ -11,15 +11,16 @@ STOP=10
 USE_PROCD=1
 
 start_service() {
-    # Гарантируем DNS — dnsmasq перезаписывает resolv.conf на 127.0.0.1,
-    # поэтому пишем upstream DNS ПОСЛЕ dnsmasq restart
-    mkdir -p /tmp/resolv.conf.d
-    echo "nameserver 8.8.8.8" > /tmp/resolv.conf.d/resolv.conf.auto
-    echo "nameserver 1.1.1.1" >> /tmp/resolv.conf.d/resolv.conf.auto
+    # DNS upstream через dnsmasq — настраиваем forwarding на public DNS
+    # dnsmasq слушает на 127.0.0.1, resolv.conf указывает на него.
+    # Agent и sing-box резолвят через dnsmasq → upstream 8.8.8.8.
+    if ! uci -q get dhcp.@dnsmasq[0].server | grep -q '8.8.8.8'; then
+        uci add_list dhcp.@dnsmasq[0].server='8.8.8.8'
+        uci add_list dhcp.@dnsmasq[0].server='1.1.1.1'
+        uci set dhcp.@dnsmasq[0].noresolv='1'
+        uci commit dhcp
+    fi
     /etc/init.d/dnsmasq restart 2>/dev/null || true
-    # Перезаписываем resolv.conf ПОСЛЕ dnsmasq (он ставит 127.0.0.1)
-    echo "nameserver 8.8.8.8" > /tmp/resolv.conf
-    echo "nameserver 1.1.1.1" >> /tmp/resolv.conf
 
     # Проверяем флаг safe mode (выставляется bridgebox-safe-mode при старте)
     local SAFE_MODE=""
