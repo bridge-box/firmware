@@ -117,21 +117,8 @@ if is_first_boot; then
     uci commit system
 fi
 
-# --- br_netfilter ---
-# КРИТИЧНО: без br_netfilter bridged пакеты не проходят через nftables.
-# nfqdns перехватывает DNS в forward chain — без этого модуля NFQUEUE не работает.
-if is_first_boot; then
-    mkdir -p /etc/modules.d
-    echo "br_netfilter" > /etc/modules.d/br-netfilter
-    mkdir -p /etc/sysctl.d
-    cat > /etc/sysctl.d/90-bridge-nf.conf <<'SYSCTL'
-net.bridge.bridge-nf-call-iptables=1
-net.bridge.bridge-nf-call-ip6tables=0
-SYSCTL
-    logger -t bridgebox "br_netfilter configured"
-fi
-
 # --- nftables ---
+# nfqdns использует AF_PACKET — br_netfilter не нужен.
 # fw4 убран из пакетов. Все nft правила загружаются через bridgebox-nftables:
 # - QUIC drop (ruleset-post/100-bridgebox-quic-drop.nft)
 # - Flow offload с задержкой 30 пакетов (ruleset-post/050-bridgebox-flow-offload.nft)

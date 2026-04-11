@@ -33,7 +33,7 @@ echo ""
 
 # --- Шаг 1: Очистка существующих интерфейсов ---
 
-echo "[1/7] Очистка существующих интерфейсов..."
+echo "[1/8] Очистка существующих интерфейсов..."
 
 # Удаляем именованные интерфейсы (wan, wan6, lan и т.д.)
 for iface in wan wan6 lan lan6; do
@@ -51,7 +51,7 @@ fi
 
 # --- Шаг 2: Очистка device-секций ---
 
-echo "[2/7] Очистка device-секций..."
+echo "[2/8] Очистка device-секций..."
 
 # Удаляем именованную секцию br0 (если скрипт запускается повторно)
 if uci -q get network.br0 >/dev/null 2>&1; then
@@ -69,7 +69,7 @@ done
 
 # --- Шаг 3: Создание bridge device ---
 
-echo "[3/7] Создание bridge device br0 (eth0 + eth1)..."
+echo "[3/8] Создание bridge device br0 (eth0 + eth1)..."
 
 uci set network.br0=device
 uci set network.br0.name='br0'
@@ -81,7 +81,7 @@ uci set network.br0.stp='0'
 
 # --- Шаг 4: Создание интерфейса bridge БЕЗ IP (стерильный мост) ---
 
-echo "[4/7] Создание интерфейса bridge (proto=none, без IP)..."
+echo "[4/8] Создание интерфейса bridge (proto=none, без IP)..."
 
 uci set network.bridge=interface
 uci set network.bridge.device='br0'
@@ -89,7 +89,7 @@ uci set network.bridge.proto='none'
 
 # --- Шаг 5: Отключение ненужных служб ---
 
-echo "[5/7] Отключение ненужных служб..."
+echo "[5/8] Отключение ненужных служб..."
 
 # odhcpd — IPv6 DHCP/RA сервер, не нужен на мосту
 if [ -f /etc/init.d/odhcpd ]; then
@@ -107,7 +107,7 @@ echo "  nftables: правила перезагружены"
 
 # --- Шаг 6: Применение ---
 
-echo "[6/7] Применение конфигурации..."
+echo "[6/8] Применение конфигурации..."
 
 uci commit network
 
@@ -120,12 +120,27 @@ echo "Итоговая конфигурация:"
 uci show network | grep -v '^network.loopback' | grep -v '^network.globals'
 echo ""
 
-# --- Шаг 7: Включение сервисов ---
+# --- Шаг 7: LAN LED → bridge activity ---
 
-echo "[7/7] Активация боевого режима..."
+echo "[7/8] Настройка LAN LED на bridge activity..."
+
+if uci -q get system.led_lan >/dev/null 2>&1; then
+    uci set system.led_lan.trigger='netdev'
+    uci set system.led_lan.dev='br0'
+    uci set system.led_lan.mode='link tx rx'
+    uci commit system
+    /etc/init.d/led restart 2>/dev/null || true
+    echo "  LAN LED: br0 link+activity"
+else
+    echo "  LAN LED: не настроен (нет led_lan в uci)"
+fi
+
+# --- Шаг 8: Включение сервисов ---
+
+echo "[8/8] Активация боевого режима..."
 
 # Включаем bridgebox-сервисы
-for svc in bridgebox-wifi bridgebox-agent bridgebox-watchdog; do
+for svc in bridgebox-wifi bridgebox-agent; do
     if [ -f "/etc/init.d/$svc" ]; then
         /etc/init.d/$svc enable
         echo "  $svc: включён"

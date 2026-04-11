@@ -63,7 +63,7 @@ COPY test/qemu-dev/binaries/ /builder/files/usr/bin/
 # Собираем образ
 RUN make -C /builder/imagebuilder image \
         PROFILE="generic" \
-        PACKAGES="tailscale wpad-basic-mbedtls -wpa-supplicant uhttpd dnsmasq -firewall4 kmod-nft-offload kmod-br-netfilter kmod-nft-nat ebtables-nft microsocks" \
+        PACKAGES="tailscale wpad-basic-mbedtls -wpa-supplicant uhttpd dnsmasq -firewall4 kmod-nft-offload microsocks" \
         FILES="/builder/files" \
         BIN_DIR="/builder/out" && \
     ls -la /builder/out/
