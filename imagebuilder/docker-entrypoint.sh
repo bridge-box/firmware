@@ -39,11 +39,11 @@ fi
 # wpad-basic-mbedtls = hostapd (AP mode) + wpa_supplicant (STA mode) в одном пакете
 # dnsmasq нужен для DHCP + DNS hijack в AP mode (captive portal)
 # -firewall4: fw4 не нужен на мосту (блокирует SSH на wlan0/tailscale0).
-# nftables правила загружаются через bridgebox-nftables init.d.
-# -firewall4: fw4 не нужен на мосту (блокирует SSH на wlan0/tailscale0).
 # kmod-nft-offload: flowtable для hardware flow offload (без fw4 не ставится автоматом).
+# kmod-br-netfilter: bridged пакеты проходят через netfilter (КРИТИЧНО для nfqdns).
+# iptables-nft: iptables DNAT для DNS redirect на bridge (nft nat не работает с br_netfilter).
 # nftables правила загружаются через bridgebox-nftables init.d.
-PACKAGES_BASE="tailscale wpad-basic-mbedtls -wpa-supplicant uhttpd dnsmasq -firewall4 kmod-nft-offload kmod-rtl8xxxu rtl8188eu-firmware rtl8192eu-firmware kmod-mt76x0u kmod-ath9k-htc"
+PACKAGES_BASE="tailscale wpad-basic-mbedtls -wpa-supplicant uhttpd dnsmasq -firewall4 kmod-nft-offload kmod-br-netfilter iptables-nft kmod-rtl8xxxu rtl8188eu-firmware rtl8192eu-firmware kmod-mt76x0u kmod-ath9k-htc"
 
 if [ "$VARIANT" = "vanilla" ]; then
     # Эталон: чистая OpenWrt, идентичная скачанной с openwrt.org
