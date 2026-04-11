@@ -79,9 +79,15 @@ WAIT
             rm -f /tmp/bridgebox-wifi-pending-ssid /tmp/bridgebox-wifi-pending-pass
             /usr/lib/bridgebox/wifi-switch.sh sta "$SSID_VAL" "$PASS_VAL" 2>&1 | logger -t bridgebox-wifi
 
-            # Если STA успешен — запускаем регистрацию
+            # Если STA успешен — перезапускаем agent (он сам зарегистрируется)
             if [ "$(cat /etc/bridgebox/wifi-mode 2>/dev/null)" = "sta" ]; then
-                /usr/bin/bb-agent register 2>&1 | logger -t bb-agent
+                if [ -f /etc/init.d/bridgebox-agent ]; then
+                    /etc/init.d/bridgebox-agent restart 2>&1 | logger -t bb-agent
+                else
+                    killall bb-agent 2>/dev/null || true
+                    sleep 1
+                    bb-agent 2>&1 | logger -t bb-agent &
+                fi
             fi
         ) &
 

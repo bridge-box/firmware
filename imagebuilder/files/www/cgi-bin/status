@@ -23,9 +23,9 @@ UPTIME_MIN=$((UPTIME_MIN % 60))
 # Версия
 VERSION=$(grep 'DISTRIB_DESCRIPTION' /etc/openwrt_release 2>/dev/null | cut -d"'" -f2)
 
-# QR deep link (только для unclaimed)
+# QR deep link (setup = ещё не подключилась, unclaimed = ждёт привязки)
 DEEPLINK=""
-if [ "$STATE" = "unclaimed" ]; then
+if [ "$STATE" = "unclaimed" ] || [ "$STATE" = "setup" ]; then
     DEEPLINK="https://t.me/bridgebox_bot?start=${BOX_ID}"
 fi
 
