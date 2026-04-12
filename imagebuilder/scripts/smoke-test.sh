@@ -323,13 +323,13 @@ if [ -f "$UCI_DEFAULTS_FILE" ]; then
     fi
 fi
 
-# Тест: bridgebox-wifi поднимает аварийный eth1 при отсутствии Wi-Fi
+# Тест: bridgebox-wifi корректно обрабатывает отсутствие Wi-Fi (management через eth0)
 WIFI_INIT_FILE="$FILES_DIR/etc/init.d/bridgebox-wifi"
 if [ -f "$WIFI_INIT_FILE" ]; then
-    if grep -q "192.168.77.1.*eth1\|eth1.*192.168.77.1" "$WIFI_INIT_FILE"; then
-        pass "bridgebox-wifi: аварийный management на eth1"
+    if grep -q "management через eth0" "$WIFI_INIT_FILE"; then
+        pass "bridgebox-wifi: fallback management через eth0"
     else
-        fail "bridgebox-wifi: НЕТ аварийного management на eth1"
+        fail "bridgebox-wifi: нет fallback на eth0 при отсутствии Wi-Fi"
     fi
 fi
 
@@ -363,8 +363,17 @@ if [ -f "$WIFI_WD" ]; then
     fi
 fi
 
-# Тест: wifi-switch.sh НЕ ребутит
+# Тест: wifi-switch.sh НЕ содержит AP mode
 WIFI_SW="$FILES_DIR/usr/lib/bridgebox/wifi-switch.sh"
+if [ -f "$WIFI_SW" ]; then
+    if grep -q "start_ap\|hostapd" "$WIFI_SW"; then
+        fail "wifi-switch.sh содержит AP mode — AP убран из прошивки!"
+    else
+        pass "wifi-switch.sh не содержит AP mode"
+    fi
+fi
+
+# Тест: wifi-switch.sh НЕ ребутит
 if [ -f "$WIFI_SW" ]; then
     if grep "reboot" "$WIFI_SW" | grep -vq "^.*:#\|echo\|logger"; then
         fail "wifi-switch.sh содержит reboot"
@@ -413,32 +422,32 @@ if [ -f "$CGI_SETUP" ]; then
     fi
 fi
 
-# Тест: dnsmasq не отключается в setup-bridge.sh (нужен для AP mode)
+# Тест: dnsmasq не отключается в setup-bridge.sh (нужен для DNS)
 if [ -f "$SETUP_BR" ]; then
     if grep -q "dnsmasq.*stop\|dnsmasq.*disable" "$SETUP_BR"; then
-        fail "setup-bridge.sh отключает dnsmasq — сломает AP mode!"
+        fail "setup-bridge.sh отключает dnsmasq — сломает DNS!"
     else
         pass "setup-bridge.sh не трогает dnsmasq"
     fi
 fi
 
-# Тест: uci-defaults НЕ отключает dnsmasq (нужен для DHCP + DNS + AP mode)
+# Тест: uci-defaults НЕ отключает dnsmasq (нужен для DNS)
 UCI_DEFAULTS="$FILES_DIR/etc/uci-defaults/10-bridgebox-system"
 if [ -f "$UCI_DEFAULTS" ]; then
     if grep -q "dnsmasq.*disable\|dnsmasq.*stop" "$UCI_DEFAULTS"; then
-        fail "uci-defaults отключает dnsmasq — сломает DHCP и AP mode!"
+        fail "uci-defaults отключает dnsmasq — сломает DNS!"
     else
         pass "uci-defaults не отключает dnsmasq"
     fi
 fi
 
-# Тест: uhttpd слушает на 0.0.0.0 (для AP mode captive portal)
+# Тест: uhttpd слушает на 0.0.0.0 (для CGI setup page)
 UHTTPD_UCI="$FILES_DIR/etc/uci-defaults/20-bridgebox-uhttpd"
 if [ -f "$UHTTPD_UCI" ]; then
     if grep -q "0.0.0.0:80" "$UHTTPD_UCI"; then
-        pass "uhttpd слушает на 0.0.0.0:80 (captive portal доступен)"
+        pass "uhttpd слушает на 0.0.0.0:80 (CGI setup доступен)"
     else
-        fail "uhttpd НЕ слушает на 0.0.0.0 — captive portal может быть недоступен"
+        fail "uhttpd НЕ слушает на 0.0.0.0 — CGI setup может быть недоступен"
     fi
 fi
 
@@ -459,11 +468,11 @@ section "L2: Пакеты прошивки"
 
 ENTRYPOINT="$(cd "$(dirname "$0")/.." && pwd)/docker-entrypoint.sh"
 if [ -f "$ENTRYPOINT" ]; then
-    # wpad-basic-mbedtls (AP + STA)
+    # wpad-basic-mbedtls (STA mode)
     if grep -q "wpad-basic-mbedtls" "$ENTRYPOINT"; then
-        pass "wpad-basic-mbedtls включён (AP + STA mode)"
+        pass "wpad-basic-mbedtls включён (STA mode)"
     else
-        fail "wpad-basic-mbedtls отсутствует — AP mode не будет работать!"
+        fail "wpad-basic-mbedtls отсутствует — STA mode не будет работать!"
     fi
 
     # wpa-supplicant должен быть исключён (конфликтует с wpad)
@@ -473,11 +482,11 @@ if [ -f "$ENTRYPOINT" ]; then
         warn "wpa-supplicant не исключён явно — может конфликтовать с wpad"
     fi
 
-    # dnsmasq (для AP DHCP)
+    # dnsmasq (для DNS resolution)
     if grep -q "dnsmasq" "$ENTRYPOINT"; then
-        pass "dnsmasq включён (DHCP для AP mode)"
+        pass "dnsmasq включён (DNS resolution)"
     else
-        fail "dnsmasq отсутствует — AP mode не будет раздавать IP!"
+        fail "dnsmasq отсутствует — DNS не будет работать!"
     fi
 
     # tailscale

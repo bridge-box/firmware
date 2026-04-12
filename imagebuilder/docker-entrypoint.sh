@@ -58,7 +58,7 @@ fi
 
 sh /builder/scripts/inject-identity.sh "$BOX_ID"
 
-# --- Wi-Fi credentials (опционально) ---
+# --- Wi-Fi credentials оператора (для провижининга) ---
 
 if [ -n "$WIFI_SSID" ]; then
     mkdir -p /builder/files/etc/bridgebox
@@ -79,6 +79,9 @@ echo "  BOX_ID:   $BOX_ID"
 echo "  PROFILE:  $PROFILE"
 echo "  VARIANT:  $VARIANT"
 echo ""
+
+# Всегда чистим предыдущую сборку — кеш ImageBuilder ломает воспроизводимость
+make -C /builder/imagebuilder clean
 
 if [ "${SKIP_FILES:-0}" = "1" ]; then
     make -C /builder/imagebuilder image \

@@ -12,9 +12,11 @@
 #   PROFILE   — профиль устройства (обязательный)
 #   BOX_ID    — уникальный ID коробки (обязательный для image)
 #   VARIANT   — production (по умолчанию) или dev
-#   AUTH_KEY  — Headscale auth key (опционально)
+#   AUTH_KEY  — Headscale auth key (опционально, для dev)
 #   START     — начальный номер для batch (по умолчанию 1)
 #   COUNT     — количество образов для batch (по умолчанию 10)
+#
+# Wi-Fi credentials вводит ЮЗЕР через CGI setup page, не оператор.
 
 SHELL := /bin/sh
 
@@ -36,7 +38,7 @@ COUNT    ?= 10
 # SD-карта для прошивки (автоопределение или задать вручную: SDCARD=/dev/sdX)
 SDCARD ?=
 
-.PHONY: image batch clean docker-build flash test qemu-test qemu-dev help
+.PHONY: image batch clean docker-build flash test qemu-test qemu-dev help ready
 
 test:
 	@echo "=== L1: Smoke Test ==="
@@ -146,6 +148,29 @@ flash:
 	echo ""; \
 	echo "=== Готово. Вставляй SD в коробку. ==="
 
+
+ready:
+	@echo "=== Готовим коробку к отправке ==="
+	@echo ""
+	@echo "--- 1/3: Smoke test ---"
+	@sh scripts/smoke-test.sh
+	@echo ""
+	@echo "--- 2/3: Сборка образа ---"
+	@$(MAKE) image PROFILE="$(PROFILE)"
+	@echo ""
+	@echo "--- 3/3: Проверка образа ---"
+	@IMGFILE=$$(ls -t "$(OUTPUT_DIR)"/bridgewrt-*.img.gz 2>/dev/null | head -1); \
+	if [ -z "$$IMGFILE" ]; then echo "ОШИБКА: образ не найден" >&2; exit 1; fi; \
+	echo "  Образ: $$IMGFILE"; \
+	echo "  Размер: $$(du -h "$$IMGFILE" | cut -f1)"; \
+	echo ""; \
+	echo "  Проверяем что wpa.conf НЕ вшит..."; \
+	if zcat "$$IMGFILE" | strings | grep -q "WIFI_SSID\|wpa_supplicant\|key_mgmt=WPA" 2>/dev/null; then \
+		echo "  ОШИБКА: wpa.conf вшит в образ!" >&2; exit 1; \
+	fi; \
+	echo "  ✓ wpa.conf не вшит — юзер введёт через CGI"; \
+	echo ""; \
+	echo "=== Коробка готова к отправке. make flash SDCARD=/dev/sdX ==="
 
 clean:
 	@echo "Очистка output/..."

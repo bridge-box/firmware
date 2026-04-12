@@ -98,8 +98,8 @@ if [ -f /etc/init.d/odhcpd ]; then
     echo "  odhcpd: остановлен и отключён"
 fi
 
-# НЕ трогаем dnsmasq — он нужен для Wi-Fi AP mode (captive portal)
-echo "  dnsmasq: не трогаем (используется Wi-Fi AP mode)"
+# НЕ трогаем dnsmasq — он нужен для DNS resolution
+echo "  dnsmasq: не трогаем (используется для DNS)"
 
 # Перезагружаем nftables правила (QUIC drop, flow offload, nfqdns)
 /etc/init.d/bridgebox-nftables reload 2>/dev/null || true
@@ -148,20 +148,22 @@ for svc in bridgebox-wifi bridgebox-agent; do
 done
 
 echo ""
-echo "Перезагрузка сети..."
-echo ""
-echo "После перезагрузки:"
-echo "  - Мост: eth0 ↔ eth1 (прозрачный, без IP)"
-echo "  - Management: wlan0 → Tailscale"
-echo "  - Статус: http://192.168.77.1/ (через Wi-Fi AP)"
+echo "Применение bridge без рестарта сети..."
+
+# Создаём bridge напрямую через iproute2 — не трогаем Wi-Fi/Tailscale
+ip link add name br0 type bridge 2>/dev/null || true
+ip link set eth0 master br0 2>/dev/null || true
+ip link set eth1 master br0 2>/dev/null || true
+ip link set br0 up
+ip link set eth0 up
+ip link set eth1 up
+
+echo "  br0: eth0 + eth1 UP"
 echo ""
 echo "Проверки:"
 echo "  bridge link              — eth0 и eth1 в br0"
 echo "  ip addr show wlan0       — management IP (Wi-Fi)"
-echo "  wifi-switch.sh status    — режим Wi-Fi (ap/sta)"
+echo "  wifi-switch.sh status    — режим Wi-Fi (sta/down)"
 echo ""
 echo "Rollback: firstboot && reboot"
 echo ""
-
-# Перезагрузка сети (только ethernet, Wi-Fi не затрагивается)
-/etc/init.d/network restart

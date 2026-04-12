@@ -3,7 +3,7 @@
 #
 # Запускается из cron каждые 3 минуты.
 # Если STA mode и Wi-Fi отвалился — пробуем переподключиться.
-# Если 3 попытки подряд неудачны — откатываемся в AP mode.
+# Если 3 попытки подряд неудачны — сдаёмся, management через eth0.
 
 WIFI_MODE=$(cat /etc/bridgebox/wifi-mode 2>/dev/null || echo "down")
 FAIL_COUNT_FILE="/tmp/bridgebox-wifi-fail-count"
@@ -33,10 +33,11 @@ echo "$FAILS" > "$FAIL_COUNT_FILE"
 logger -t bridgebox-wifi "Wi-Fi отвалился (попытка $FAILS/$MAX_FAILS)"
 
 if [ "$FAILS" -ge "$MAX_FAILS" ]; then
-    # Слишком много неудач — AP mode, юзер сможет переввести пароль
-    logger -t bridgebox-wifi "Откат в AP mode после $MAX_FAILS неудачных попыток"
+    # Слишком много неудач — management через eth0, юзер может перенастроить через CGI
+    logger -t bridgebox-wifi "Wi-Fi недоступен после $MAX_FAILS попыток — management через eth0"
     rm -f "$FAIL_COUNT_FILE"
-    /usr/lib/bridgebox/wifi-switch.sh ap
+    . /usr/lib/bridgebox/lib-common.sh
+    safe_write /etc/bridgebox/wifi-mode "down"
 else
     # Пробуем восстановить
     /usr/lib/bridgebox/wifi-switch.sh restore

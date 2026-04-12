@@ -1,5 +1,5 @@
 #!/bin/sh
-# wifi-setup — CGI captive portal для настройки Wi-Fi
+# wifi-setup — CGI для настройки Wi-Fi (юзер вводит credentials)
 #
 # GET:  показывает форму ввода SSID/пароль
 # POST: принимает credentials, запускает подключение

@@ -3,7 +3,7 @@
 # Hardware + software flow offload для bridge
 #
 # Первые 30 пакетов проходят через софтверный стек
-# (нужно для DPI bypass handshake), после — hw offload.
+# (нужно для корректного завершения handshake), после — hw offload.
 #
 # Отдельная таблица — не зависит от fw4.
 # Идемпотентный: delete + create.

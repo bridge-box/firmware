@@ -3,9 +3,9 @@
 #
 # При загрузке:
 #   - Есть wpa.conf → подключаемся (STA mode)
-#   - Нет wpa.conf  → поднимаем точку доступа (AP mode)
+#   - Нет wpa.conf  → management через eth0 (DHCP от роутера юзера)
 #
-# Fallback: если STA не удался → AP mode
+# Wi-Fi credentials вводит юзер через CGI setup page.
 
 START=90
 STOP=10
@@ -41,9 +41,6 @@ start() {
         echo "none" > /sys/class/leds/green:wan/trigger 2>/dev/null
         echo 0 > /sys/class/leds/green:wan/brightness 2>/dev/null
     }
-    led_err() {
-        echo "default-on" > /sys/class/leds/red:wan/trigger 2>/dev/null
-    }
 
     led_blink
     logger -t bridgebox-wifi "Ожидание Wi-Fi адаптера..."
@@ -58,15 +55,12 @@ start() {
 
     if [ -z "$(ls /sys/class/ieee80211/ 2>/dev/null)" ]; then
         logger -t bridgebox-wifi "Wi-Fi адаптер не найден за 30 сек"
-        led_err
 
         if [ -f "$MGMT_IFACE_FILE" ]; then
             # Sandbox: management через ethernet (eth2)
             local mgmt_iface
             mgmt_iface=$(cat "$MGMT_IFACE_FILE")
             logger -t bridgebox-wifi "Sandbox mode: management через $mgmt_iface (DHCP)"
-            # DHCP на mgmt интерфейсе уже настроен через uci (99-sandbox)
-            # Ждём получения IP
             local ip_attempt=0
             local mgmt_ip=""
             while [ $ip_attempt -lt 15 ]; do
@@ -91,15 +85,13 @@ start() {
             fi
         fi
 
-        # Реальное железо: eth1 уже standalone management (192.168.77.1)
-        # Убеждаемся что IP на месте
-        logger -t bridgebox-wifi "Wi-Fi недоступен — management через eth1 (192.168.77.1)"
-        ip addr add 192.168.77.1/24 dev eth1 2>/dev/null || true
-        ip link set eth1 up 2>/dev/null || true
+        # Реальное железо без Wi-Fi: management через eth0 (DHCP от роутера юзера)
+        logger -t bridgebox-wifi "Wi-Fi недоступен — management через eth0"
         . /usr/lib/bridgebox/lib-common.sh
         safe_write /etc/bridgebox/wifi-mode "down"
+        led_off
         rm -f "$LOCK"
-        return 1
+        return 0
     fi
 
     # Wi-Fi найден
@@ -112,17 +104,20 @@ start() {
     if [ -f "$WPA_CONF" ]; then
         /usr/lib/bridgebox/wifi-switch.sh restore
     else
-        /usr/lib/bridgebox/wifi-switch.sh ap
+        # Нет wpa.conf — юзер ещё не ввёл credentials через CGI
+        # Management через eth0, Wi-Fi будет настроен позже
+        logger -t bridgebox-wifi "Нет wpa.conf — ожидаем настройку через CGI, management через eth0"
+        . /usr/lib/bridgebox/lib-common.sh
+        safe_write /etc/bridgebox/wifi-mode "down"
     fi
 
     rm -f "$LOCK"
 }
 
 stop() {
-    killall hostapd 2>/dev/null || true
     killall wpa_supplicant 2>/dev/null || true
-    if [ -f /tmp/dnsmasq-bridgebox.pid ]; then
-        kill "$(cat /tmp/dnsmasq-bridgebox.pid)" 2>/dev/null || true
+    if [ -f /tmp/udhcpc-wlan0.pid ]; then
+        kill "$(cat /tmp/udhcpc-wlan0.pid)" 2>/dev/null || true
     fi
     ip link set wlan0 down 2>/dev/null || true
     iw dev wlan0 del 2>/dev/null || true

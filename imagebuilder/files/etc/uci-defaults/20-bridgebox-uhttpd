@@ -1,5 +1,5 @@
 #!/bin/sh
-# 20-bridgebox-uhttpd — Настройка uhttpd для status page + captive portal
+# 20-bridgebox-uhttpd — Настройка uhttpd для status page + CGI setup
 # Выполняется один раз (uci-defaults).
 
 # Слушаем на 0.0.0.0 — в AP mode юзер подключается к 192.168.77.1,
