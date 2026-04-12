@@ -1,0 +1,218 @@
+#!/bin/sh
+# setup — CGI страница первичной настройки BridgeBox
+# Объединяет Wi-Fi credentials и пользовательское соглашение
+# Доступен по IP коробки: http://<DHCP_IP>/cgi-bin/setup
+
+BOX_ID=$(cat /etc/bridgebox/box-id 2>/dev/null || echo "unknown")
+STATE=$(cat /etc/bridgebox/state 2>/dev/null || echo "setup")
+WIFI_MODE=$(cat /etc/bridgebox/wifi-mode 2>/dev/null || echo "down")
+RESULT=""
+RESULT_CLASS=""
+
+# Если коробка уже настроена — редирект на status
+if [ "$STATE" = "active" ] || [ "$STATE" = "provisioned" ]; then
+    echo "Status: 302 Found"
+    echo "Location: /cgi-bin/status"
+    echo ""
+    exit 0
+fi
+
+# --- Обработка POST ---
+if [ "$REQUEST_METHOD" = "POST" ]; then
+    BODY=$(head -c "${CONTENT_LENGTH:-0}")
+
+    SSID=$(echo "$BODY" | tr '&' '\n' | grep '^ssid=' | cut -d= -f2- | \
+        sed 's/+/ /g; s/%\([0-9A-Fa-f][0-9A-Fa-f]\)/\\x\1/g' | xargs -0 printf "%b")
+    PASS=$(echo "$BODY" | tr '&' '\n' | grep '^pass=' | cut -d= -f2- | \
+        sed 's/+/ /g; s/%\([0-9A-Fa-f][0-9A-Fa-f]\)/\\x\1/g' | xargs -0 printf "%b")
+    AGREE=$(echo "$BODY" | tr '&' '\n' | grep '^agree=' | cut -d= -f2-)
+
+    if [ -z "$SSID" ]; then
+        RESULT="Введите название Wi-Fi сети"
+        RESULT_CLASS="err"
+    elif [ -z "$PASS" ]; then
+        RESULT="Введите пароль"
+        RESULT_CLASS="err"
+    elif [ "$AGREE" != "on" ]; then
+        RESULT="Примите пользовательское соглашение"
+        RESULT_CLASS="err"
+    else
+        # Записываем agreement
+        echo "accepted" > /etc/bridgebox/agreement
+
+        # Записываем Wi-Fi credentials
+        echo "$SSID" > /tmp/bridgebox-wifi-pending-ssid
+        echo "$PASS" > /tmp/bridgebox-wifi-pending-pass
+        chmod 600 /tmp/bridgebox-wifi-pending-ssid /tmp/bridgebox-wifi-pending-pass
+
+        # Показываем loading page
+        echo "Content-Type: text/html; charset=utf-8"
+        echo ""
+        cat <<WAIT
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BridgeBox — Подключение...</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #0a0a0a; color: #e0e0e0; padding: 20px; display: flex; align-items: center; justify-content: center; min-height: 100vh; line-height: 1.25; }
+.container { max-width: 420px; text-align: center; }
+h1 { font-size: 1.4em; margin-bottom: 16px; text-transform: uppercase; font-weight: 300; letter-spacing: 1px; line-height: 1.15; }
+.spinner { width: 48px; height: 48px; border: 4px solid #333; border-top-color: #1c69d4; border-radius: 50%; animation: spin 1s linear infinite; margin: 24px auto; }
+@keyframes spin { to { transform: rotate(360deg); } }
+p { color: #aaa; line-height: 1.25; margin-bottom: 12px; }
+.hint { font-size: 0.85em; color: #666; margin-top: 24px; line-height: 1.25; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>Подключаемся к Wi-Fi...</h1>
+<div class="spinner"></div>
+<p>Коробка пробует подключиться к сети <strong>${SSID}</strong>.</p>
+<p>Это займёт до 30 секунд.</p>
+<p id="status" style="color: #4ade80; display: none;"></p>
+<div class="hint">
+Продолжи настройку в Telegram — бот пришлёт инструкции.<br>
+Если подключение не удалось — обнови эту страницу.
+</div>
+<script>
+// Проверяем Wi-Fi каждые 5 секунд
+var checks = 0;
+var timer = setInterval(function() {
+    checks++;
+    var x = new XMLHttpRequest();
+    x.open('GET', '/cgi-bin/api-status', true);
+    x.timeout = 3000;
+    x.onload = function() {
+        try {
+            var d = JSON.parse(x.responseText);
+            if (d.wifi_mode === 'sta') {
+                clearInterval(timer);
+                document.querySelector('.spinner').style.display = 'none';
+                document.querySelector('h1').textContent = 'Wi-Fi подключён!';
+                var s = document.getElementById('status');
+                s.style.display = 'block';
+                s.textContent = 'Продолжи в Telegram.';
+            }
+        } catch(e) {}
+    };
+    x.onerror = function() {};
+    x.send();
+    if (checks > 12) clearInterval(timer);
+}, 5000);
+</script>
+</div>
+</body>
+</html>
+WAIT
+
+        # Запускаем в фоне ПОСЛЕ отправки ответа
+        (
+            sleep 2
+            SSID_VAL=$(cat /tmp/bridgebox-wifi-pending-ssid)
+            PASS_VAL=$(cat /tmp/bridgebox-wifi-pending-pass)
+            rm -f /tmp/bridgebox-wifi-pending-ssid /tmp/bridgebox-wifi-pending-pass
+            /usr/lib/bridgebox/wifi-switch.sh sta "$SSID_VAL" "$PASS_VAL" 2>&1 | logger -t bridgebox-wifi
+
+            # Если STA успешен — перезапускаем agent (он отправит agreement на backend)
+            if [ "$(cat /etc/bridgebox/wifi-mode 2>/dev/null)" = "sta" ]; then
+                if [ -f /etc/init.d/bridgebox-agent ]; then
+                    /etc/init.d/bridgebox-agent restart 2>&1 | logger -t bb-agent
+                else
+                    killall bb-agent 2>/dev/null || true
+                    sleep 1
+                    bb-agent 2>&1 | logger -t bb-agent &
+                fi
+            fi
+        ) &
+
+        exit 0
+    fi
+fi
+
+# --- GET: показываем форму ---
+echo "Content-Type: text/html; charset=utf-8"
+echo ""
+
+cat <<EOF
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BridgeBox — Настройка</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #0a0a0a; color: #e0e0e0; padding: 20px; line-height: 1.25; }
+.container { max-width: 420px; margin: 0 auto; }
+h1 { font-size: 1.4em; margin-bottom: 4px; text-transform: uppercase; font-weight: 300; letter-spacing: 1px; line-height: 1.15; }
+.subtitle { color: #888; font-size: 0.85em; margin-bottom: 24px; line-height: 1.25; }
+.card { background: #1a1a1a; border-radius: 0; padding: 20px; margin-bottom: 16px; }
+.card-title { font-size: 0.75em; text-transform: uppercase; letter-spacing: 2px; color: #888; margin-bottom: 16px; font-weight: 300; line-height: 1.15; }
+label { display: block; color: #aaa; font-size: 0.85em; margin-bottom: 4px; line-height: 1.25; }
+input[type="text"], input[type="password"] {
+    width: 100%; padding: 12px; background: #111; border: 1px solid #333;
+    border-radius: 0; color: #e0e0e0; font-size: 1em; margin-bottom: 16px; line-height: 1.25;
+}
+input:focus { border-color: #1c69d4; outline: none; }
+.agreement { font-size: 0.8em; color: #999; line-height: 1.4; margin-bottom: 16px; max-height: 150px; overflow-y: auto; padding: 12px; background: #111; border: 1px solid #333; }
+.checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.checkbox-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: #1c69d4; }
+.checkbox-row label { margin-bottom: 0; font-size: 0.9em; color: #e0e0e0; }
+button {
+    width: 100%; padding: 14px; background: #1c69d4; color: #fff;
+    border: none; border-radius: 0; font-size: 1em; font-weight: 700;
+    cursor: pointer; line-height: 1.25;
+}
+button:active { background: #0653b6; }
+.result { padding: 12px; border-radius: 0; margin-bottom: 16px; font-size: 0.9em; }
+.result.err { background: #3a1a1a; color: #f87171; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>BridgeBox</h1>
+<div class="subtitle">${BOX_ID}</div>
+
+<form method="POST" action="/cgi-bin/setup">
+<div class="card">
+  <div class="card-title">Wi-Fi</div>
+EOF
+
+if [ -n "$RESULT" ]; then
+    cat <<EOF
+  <div class="result ${RESULT_CLASS}">${RESULT}</div>
+EOF
+fi
+
+cat <<EOF
+  <label for="ssid">Название сети (SSID)</label>
+  <input type="text" id="ssid" name="ssid" placeholder="Ваш домашний Wi-Fi" required autocomplete="off">
+  <label for="pass">Пароль</label>
+  <input type="password" id="pass" name="pass" placeholder="Пароль от Wi-Fi" required>
+</div>
+
+<div class="card">
+  <div class="card-title">Соглашение</div>
+  <div class="agreement">
+Устройство BridgeBox будет оптимизировать ваше интернет-соединение для улучшения доступности интернет-ресурсов.
+
+Устройство работает как прозрачный сетевой мост и не собирает, не хранит и не передаёт ваши личные данные.
+
+Нажимая «Подключить», вы соглашаетесь с условиями использования.
+  </div>
+  <div class="checkbox-row">
+    <input type="checkbox" id="agree" name="agree">
+    <label for="agree">Принимаю условия</label>
+  </div>
+</div>
+
+<button type="submit">Подключить</button>
+</form>
+
+</div>
+</body>
+</html>
+EOF

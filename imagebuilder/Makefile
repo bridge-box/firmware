@@ -94,7 +94,7 @@ help:
 
 docker-build:
 	@echo "=== Сборка Docker образа ==="
-	docker build --build-arg CACHEBUST=$(shell date +%s) -t $(DOCKER_IMAGE) .
+	docker build --no-cache -t $(DOCKER_IMAGE) .
 
 image:
 	@if [ -z "$(PROFILE)" ]; then echo "Ошибка: PROFILE не задан" >&2; exit 1; fi
