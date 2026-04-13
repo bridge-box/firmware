@@ -40,9 +40,10 @@ fi
 # dnsmasq нужен для DHCP + DNS hijack в AP mode (captive portal)
 # -firewall4: fw4 не нужен на мосту (блокирует SSH на wlan0/tailscale0).
 # kmod-nft-offload: flowtable для hardware flow offload (без fw4 не ставится автоматом).
-# nfqdns использует AF_PACKET — не нужны br_netfilter, NFQUEUE, iptables.
+# kmod-br-netfilter: без него nftables не видит пакеты проходящие через bridge.
+# kmod-nft-queue: NFQUEUE для внутренних инструментов.
 # nftables правила загружаются через bridgebox-nftables init.d.
-PACKAGES_BASE="tailscale wpad-basic-mbedtls -wpa-supplicant uhttpd dnsmasq -firewall4 kmod-nft-offload kmod-rtl8xxxu rtl8188eu-firmware rtl8192eu-firmware kmod-mt76x0u kmod-ath9k-htc"
+PACKAGES_BASE="tailscale wpad-basic-mbedtls -wpa-supplicant uhttpd dnsmasq -firewall4 kmod-nft-offload kmod-br-netfilter kmod-nft-queue kmod-rtl8xxxu rtl8188eu-firmware rtl8192eu-firmware kmod-mt76x0u kmod-ath9k-htc"
 
 if [ "$VARIANT" = "vanilla" ]; then
     # Эталон: чистая OpenWrt, идентичная скачанной с openwrt.org

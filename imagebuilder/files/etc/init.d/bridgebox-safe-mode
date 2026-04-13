@@ -19,42 +19,43 @@ SAFE_MODE_FLAG="/tmp/bridgebox-safe-mode"
 start() {
     mkdir -p /etc/bridgebox
 
-    # Читаем текущее состояние (fallback: first boot, normal mode)
+    # Первый boot — agent ещё не писал файл
     if [ ! -f "$BOOT_STATE" ]; then
-        echo '{"state":"normal","failure_count":"first"}' > "$BOOT_STATE"
+        return 0
     fi
 
     local state
     state=$(cat "$BOOT_STATE" 2>/dev/null || echo '{}')
 
-    # Парсим поле state
-    local current_state
-    current_state=$(echo "$state" | sed -n 's/.*"state":"\([^"]*\)".*/\1/p')
+    # Формат от bb-agent (serde):
+    #   {"Normal":{"failure_count":"First"}}   — нормальный режим
+    #   "SafeMode"                             — safe mode
+    #
+    # Shell ТОЛЬКО ЧИТАЕТ. Инкремент и сброс — в agent.
+    # Safe mode если: уже SafeMode ИЛИ failure_count=Third (3 неудачи подряд).
 
-    if [ "$current_state" = "safe_mode" ]; then
+    if echo "$state" | grep -q '"SafeMode"'; then
         touch "$SAFE_MODE_FLAG"
         logger -t bridgebox-safe-mode "SAFE MODE активен — агент запустится с --safe-mode"
         return 0
     fi
 
-    # Normal state — инкрементируем failure_count
-    # (агент сбросит счётчик при успешном heartbeat)
     local failure_count
-    failure_count=$(echo "$state" | sed -n 's/.*"failure_count":"\([^"]*\)".*/\1/p')
+    failure_count=$(echo "$state" | sed -n 's/.*"failure_count"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
 
     case "$failure_count" in
-        "first")
-            echo '{"state":"normal","failure_count":"second"}' > "$BOOT_STATE"
+        First)
+            logger -t bridgebox-safe-mode "попытка загрузки 1/3"
+            ;;
+        Second)
             logger -t bridgebox-safe-mode "попытка загрузки 2/3"
             ;;
-        "second")
-            echo '{"state":"normal","failure_count":"third"}' > "$BOOT_STATE"
-            logger -t bridgebox-safe-mode "попытка загрузки 3/3"
-            ;;
-        "third"|*)
-            echo '{"state":"safe_mode"}' > "$BOOT_STATE"
+        Third)
             touch "$SAFE_MODE_FLAG"
             logger -t bridgebox-safe-mode "ПЕРЕХОД В SAFE MODE — 3 неудачных загрузки подряд"
+            ;;
+        *)
+            logger -t bridgebox-safe-mode "неизвестный failure_count: $failure_count — пропуск"
             ;;
     esac
 }
