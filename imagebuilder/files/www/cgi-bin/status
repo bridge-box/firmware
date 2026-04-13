@@ -127,7 +127,7 @@ fi
 cat <<EOF
 <div class="card" style="text-align: center; margin-top: 24px;">
   <div class="card-title">Обслуживание</div>
-  <a href="/cgi-bin/factory-reset" style="display: inline-block; background: #dc2626; color: white; padding: 10px 24px; border-radius: 0; text-decoration: none; font-size: 0.85em; font-weight: 700;">Сброс к заводским настройкам</a>
+  <a href="/cgi-bin/wifi-reset" style="display: inline-block; background: #dc2626; color: white; padding: 10px 24px; border-radius: 0; text-decoration: none; font-size: 0.85em; font-weight: 700;">Сброс Wi-Fi</a>
 </div>
 </div>
 </body>

@@ -1,13 +1,11 @@
 #!/bin/sh
-# factory-reset — CGI эндпоинт для сброса к заводским настройкам
+# wifi-reset — CGI эндпоинт для сброса Wi-Fi
 # GET  → страница с кнопкой подтверждения
 # POST → выполняет сброс
 
 BOX_ID=$(cat /etc/bridgebox/box-id 2>/dev/null || echo "unknown")
 
-# Определяем метод запроса
 if [ "$REQUEST_METHOD" = "POST" ]; then
-    # Выполняем factory reset
     echo "Content-Type: text/html; charset=utf-8"
     echo ""
     cat <<EOF
@@ -16,26 +14,26 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BridgeBox — Сброс</title>
+<title>BridgeBox — Сброс Wi-Fi</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #0a0a0a; color: #e0e0e0; padding: 40px 20px; text-align: center; line-height: 1.25; }
 h1 { color: #facc15; margin-bottom: 16px; text-transform: uppercase; font-weight: 300; letter-spacing: 1px; line-height: 1.15; }
-p { color: #aaa; line-height: 1.25; }
+p { color: #aaa; line-height: 1.4; margin-bottom: 12px; }
 </style>
 </head>
 <body>
 <h1>Сброс выполняется...</h1>
-<p>Коробка перезагружается. Подключитесь к Wi-Fi сети BridgeBox-* через 1-2 минуты.</p>
+<p>Wi-Fi настройки сброшены.</p>
+<p>Через 30 секунд подключитесь к коробке по кабелю (LAN) и откройте <strong>http://192.168.77.1/cgi-bin/setup</strong> для настройки нового Wi-Fi.</p>
 </body>
 </html>
 EOF
-    # Запускаем сброс в фоне (чтобы HTTP ответ успел уйти)
-    ( sleep 2 && /usr/lib/bridgebox/factory-reset.sh ) &
+    ( sleep 2 && /usr/lib/bridgebox/wifi-reset.sh ) &
     exit 0
 fi
 
-# GET — показываем страницу с подтверждением
+# GET — страница подтверждения
 echo "Content-Type: text/html; charset=utf-8"
 echo ""
 cat <<EOF
@@ -44,7 +42,7 @@ cat <<EOF
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BridgeBox — Сброс к заводским настройкам</title>
+<title>BridgeBox — Сброс Wi-Fi</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #0a0a0a; color: #e0e0e0; padding: 20px; line-height: 1.25; }
@@ -61,17 +59,17 @@ h1 { font-size: 1.4em; margin-bottom: 20px; text-transform: uppercase; font-weig
 </head>
 <body>
 <div class="container">
-<h1>Сброс к заводским настройкам</h1>
+<h1>Сброс Wi-Fi</h1>
 <div class="warning">
-<p><strong>Это действие необратимо!</strong></p>
+<p><strong>Wi-Fi настройки будут удалены</strong></p>
 <ul>
-<li>Wi-Fi настройки будут удалены</li>
-<li>Привязка к аккаунту будет сброшена</li>
-<li>Коробка вернётся в режим первоначальной настройки</li>
+<li>Коробка отключится от текущей Wi-Fi сети</li>
+<li>Обход блокировок будет отключён до повторной настройки</li>
+<li>Для настройки нового Wi-Fi подключитесь к коробке по кабелю</li>
 </ul>
 </div>
 <form method="POST">
-<button type="submit" class="btn-reset" onclick="return confirm('Вы уверены? Коробка будет полностью сброшена.')">Сбросить к заводским настройкам</button>
+<button type="submit" class="btn-reset" onclick="return confirm('Сбросить Wi-Fi настройки?')">Сбросить Wi-Fi</button>
 </form>
 <a href="/cgi-bin/status" class="btn-back">&larr; Назад к статусу</a>
 </div>

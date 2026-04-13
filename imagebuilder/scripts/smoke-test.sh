@@ -283,33 +283,29 @@ for f in "$FILES_DIR/usr/lib/bridgebox/wifi-switch.sh" "$FILES_DIR/etc/uci-defau
     fi
 done
 
-# Тест: factory-reset.sh существует и содержит firstboot
-FR_SCRIPT="$FILES_DIR/usr/lib/bridgebox/factory-reset.sh"
-if [ -f "$FR_SCRIPT" ]; then
-    if grep -q "firstboot" "$FR_SCRIPT"; then
-        pass "factory-reset.sh содержит firstboot"
-    else
-        fail "factory-reset.sh НЕ содержит firstboot"
-    fi
+# Тест: wifi-reset.sh существует
+WR_SCRIPT="$FILES_DIR/usr/lib/bridgebox/wifi-reset.sh"
+if [ -f "$WR_SCRIPT" ]; then
+    pass "wifi-reset.sh существует"
 else
-    fail "factory-reset.sh не существует"
+    fail "wifi-reset.sh не существует"
 fi
 
-# Тест: factory-reset CGI существует
-FR_CGI="$FILES_DIR/www/cgi-bin/factory-reset"
-if [ -f "$FR_CGI" ] && [ -x "$FR_CGI" ]; then
-    pass "cgi-bin/factory-reset существует и executable"
+# Тест: wifi-reset CGI существует
+WR_CGI="$FILES_DIR/www/cgi-bin/wifi-reset"
+if [ -f "$WR_CGI" ] && [ -x "$WR_CGI" ]; then
+    pass "cgi-bin/wifi-reset существует и executable"
 else
-    fail "cgi-bin/factory-reset не существует или не executable"
+    fail "cgi-bin/wifi-reset не существует или не executable"
 fi
 
-# Тест: status page содержит кнопку factory-reset
+# Тест: status page содержит кнопку wifi-reset
 STATUS_CGI="$FILES_DIR/www/cgi-bin/status"
 if [ -f "$STATUS_CGI" ]; then
-    if grep -q "factory-reset" "$STATUS_CGI"; then
-        pass "status page содержит ссылку на factory-reset"
+    if grep -q "wifi-reset" "$STATUS_CGI"; then
+        pass "status page содержит ссылку на wifi-reset"
     else
-        fail "status page НЕ содержит ссылку на factory-reset"
+        fail "status page НЕ содержит ссылку на wifi-reset"
     fi
 fi
 
