@@ -11,11 +11,14 @@ PROFILE=""
 BOX_ID=""
 VARIANT="production"
 
+AUTH_KEY=""
+
 for arg in "$@"; do
     case "$arg" in
         PROFILE=*)    PROFILE="${arg#PROFILE=}" ;;
         BOX_ID=*)     BOX_ID="${arg#BOX_ID=}" ;;
         VARIANT=*)    VARIANT="${arg#VARIANT=}" ;;
+        AUTH_KEY=*)   AUTH_KEY="${arg#AUTH_KEY=}" ;;
         WIFI_SSID=*)  WIFI_SSID="${arg#WIFI_SSID=}" ;;
         WIFI_PASS=*)  WIFI_PASS="${arg#WIFI_PASS=}" ;;
     esac
@@ -57,7 +60,7 @@ fi
 
 # --- Инжектим BOX_ID ---
 
-sh /builder/scripts/inject-identity.sh "$BOX_ID"
+sh /builder/scripts/inject-identity.sh "$BOX_ID" "$AUTH_KEY"
 
 # --- Wi-Fi credentials оператора (для провижининга) ---
 
