@@ -128,6 +128,10 @@ fi
 if is_first_boot; then
     safe_write /etc/bridgebox/state 'setup'
     safe_write /etc/bridgebox/wifi-mode 'down'
+    # Сброс boot counter — новая прошивка = чистый старт.
+    # boot-state.json на overlay переживает DD-перепрошивку SD,
+    # поэтому safe mode со старой прошивки может остаться.
+    safe_write /etc/bridgebox/boot-state.json '{"Normal":{"failure_count":"First"}}'
 fi
 
 # --- uhttpd: слушать на всех интерфейсах в setup ---

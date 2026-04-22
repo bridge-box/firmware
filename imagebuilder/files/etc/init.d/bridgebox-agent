@@ -22,6 +22,22 @@ start_service() {
     fi
     /etc/init.d/dnsmasq restart 2>/dev/null || true
 
+    # Синхронизация часов перед стартом agent.
+    # Без правильного времени TLS не работает → ни backend, ни Tailscale.
+    # ntpd -n -q = one-shot sync, блокирующий. Таймаут 15 сек.
+    if [ "$(date +%Y)" -lt 2026 ]; then
+        logger -t bridgebox-agent "Часы отстают ($(date)), синхронизируем NTP..."
+        ntpd -n -q -p pool.ntp.org -p time.google.com &
+        NTP_PID=$!
+        WAITED=0
+        while kill -0 $NTP_PID 2>/dev/null && [ $WAITED -lt 15 ]; do
+            sleep 1
+            WAITED=$((WAITED + 1))
+        done
+        kill $NTP_PID 2>/dev/null || true
+        logger -t bridgebox-agent "Время после NTP: $(date)"
+    fi
+
     # Проверяем флаг safe mode (выставляется bridgebox-safe-mode при старте)
     local SAFE_MODE=""
     if [ -f /tmp/bridgebox-safe-mode ]; then
