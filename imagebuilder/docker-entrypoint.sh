@@ -46,7 +46,11 @@ fi
 # kmod-br-netfilter: без него nftables не видит пакеты проходящие через bridge.
 # kmod-nft-queue: NFQUEUE для внутренних инструментов.
 # nftables правила загружаются через bridgebox-nftables init.d.
-PACKAGES_BASE="tailscale wpad-basic-mbedtls -wpa-supplicant uhttpd dnsmasq -firewall4 kmod-nft-offload kmod-br-netfilter kmod-nft-queue kmod-rtl8xxxu rtl8188eu-firmware rtl8192eu-firmware kmod-mt76x0u kmod-ath9k-htc"
+# dockerd docker: рантайм для контейнера невода (data-plane). CLI = docker.
+#   kmod-veth: docker-сети; iptables docker не управляет ("iptables":false в daemon.json),
+#   невод идёт с --network host. storage-driver решаем по fs на стенде (overlay2 НЕ работает
+#   поверх overlayfs-rootfs → возможно vfs или отдельный раздел под /opt/docker).
+PACKAGES_BASE="tailscale wpad-basic-mbedtls -wpa-supplicant uhttpd dnsmasq -firewall4 kmod-nft-offload kmod-br-netfilter kmod-nft-queue kmod-rtl8xxxu rtl8188eu-firmware rtl8192eu-firmware kmod-mt76x0u kmod-ath9k-htc dockerd docker kmod-veth"
 
 if [ "$VARIANT" = "vanilla" ]; then
     # Эталон: чистая OpenWrt, идентичная скачанной с openwrt.org
@@ -93,10 +97,14 @@ if [ "${SKIP_FILES:-0}" = "1" ]; then
         PACKAGES="$PACKAGES" \
         BIN_DIR="/builder/out"
 else
+    # ROOTFS_PARTSIZE=8192 — место под data-root docker (/opt/docker) + образ невода (>1GB).
+    # Дефолт rootfs крошечный. 8GB рассчитано на ≥16GB SD/eMMC; подтвердить `df -h /opt` на стенде,
+    # при нехватке — поднять число или вынести /opt/docker на отдельный раздел.
     make -C /builder/imagebuilder image \
         PROFILE="$PROFILE" \
         PACKAGES="$PACKAGES" \
         FILES="/builder/files" \
+        ROOTFS_PARTSIZE="8192" \
         BIN_DIR="/builder/out"
 fi
 

@@ -1,0 +1,26 @@
+# 060-bridgebox-nevod.nft
+#
+# Ingress невода (data-plane) на bridge.
+# Подаёт неводу через NFQUEUE 100:
+#   - DNS (udp/53)  — DNS-слой: blacklist-решение direct/desync/via-proxy + spoof для via-proxy
+#   - TLS (tcp/443) — обе стороны: клиент→сервер (десинк ClientHello) + сервер→клиент (autottl/наблюдение)
+#
+# Флаг `bypass` = ЯДЕРНЫЙ fail-open: если невод не слушает очередь (умер/завис/не стартовал)
+# или очередь переполнена — ядро ПРОПУСКАЕТ пакеты нетронутыми. Коробка деградирует в
+# прозрачный кабель без ребутов и .sh-watchdog.
+#
+# Приоритет mangle (-150) — раньше offload (-1) и quic-drop (mangle+1), чтобы невод увидел
+# флоу до hw-offload. 443/53 дополнительно исключены из offload в 050-*.nft.
+#
+# Отдельная таблица — не зависит от fw4. Идемпотентный: delete + create.
+
+table inet bridgebox_nevod
+delete table inet bridgebox_nevod
+table inet bridgebox_nevod {
+    chain ingress {
+        type filter hook forward priority mangle; policy accept;
+        udp dport 53  queue num 100 bypass comment "nevod: DNS-слой (blacklist/via-proxy)"
+        tcp dport 443 queue num 100 bypass comment "nevod: TLS клиент->сервер (десинк)"
+        tcp sport 443 queue num 100 bypass comment "nevod: TLS сервер->клиент (autottl/наблюдение)"
+    }
+}

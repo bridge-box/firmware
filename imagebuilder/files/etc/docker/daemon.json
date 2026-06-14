@@ -1,0 +1,8 @@
+{
+  "data-root": "/opt/docker",
+  "iptables": false,
+  "ip6tables": false,
+  "bridge": "none",
+  "log-driver": "json-file",
+  "log-opts": { "max-size": "10m", "max-file": "3" }
+}
